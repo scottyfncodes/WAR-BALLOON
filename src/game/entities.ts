@@ -291,18 +291,19 @@ export class Enemy {
   homeX: number; homeY: number; patrol: number; active = false; tag?: string; hookCd = 0;
   constructor(x: number, y: number, kind: EnemyKind, patrol = 200) {
     this.x = x; this.y = y; this.kind = kind; this.homeX = x; this.homeY = y; this.patrol = patrol;
-    const hp: Record<EnemyKind, number> = { buzzard: 1, turret: 3, buggy: 3, gyro: 2 };
+    const hp: Record<EnemyKind, number> = { buzzard: 1, turret: 3, buggy: 3, gyro: 2, mine: 1, snapper: 2, moth: 1 };
     this.hp = this.maxHp = hp[kind];
-    this.r = kind === 'buzzard' ? 15 : kind === 'turret' ? 22 : kind === 'buggy' ? 24 : 22;
+    this.r = ({ buzzard: 15, turret: 22, buggy: 24, gyro: 22, mine: 15, snapper: 20, moth: 16 } as Record<EnemyKind, number>)[kind];
   }
-  get cy() { return this.kind === 'turret' ? this.y - 16 : this.kind === 'buggy' ? this.y - 16 : this.y; }
+  get cy() { return this.kind === 'turret' || this.kind === 'buggy' ? this.y - 16 : this.kind === 'snapper' ? this.y - 20 - this.lunge * 130 : this.y; }
+  lunge = 0; style = 'city';
   damage(w: World, n: number, src: 'bomb' | 'hook' | 'ram' = 'bomb') {
     if (this.dead || this.dying > 0) return;
     this.hp -= n; this.hitFlash = 0.18;
     if (this.kind === 'buzzard') w.fx.feathers(this.x, this.y, 4);
     if (this.hp <= 0) {
       this.dying = 0.01;
-      if (this.kind === 'buzzard' || this.kind === 'gyro') { this.vy = -120; this.vx = rand(-60, 60); Audio.squawk(); }
+      if (this.kind === 'buzzard' || this.kind === 'gyro' || this.kind === 'moth') { this.vy = -120; this.vx = rand(-60, 60); Audio.squawk(); }
       else { w.fx.explosion(this.x, this.cy, 1.1, pick(['KA-BLAM!', 'KRUNCH!', 'BOOM!'])); Audio.explosion(1.1); this.dead = true; w.onEnemyDestroyed(this); }
       if (src === 'hook') w.fx.burst(this.x, this.y - 20, 'WHACK!', 24);
     } else { Audio.clank(); if (src === 'hook') w.fx.burst(this.x, this.y - 20, 'BONK!', 20); }
@@ -328,6 +329,9 @@ export class Enemy {
       case 'turret': this.updTurret(w, dt); break;
       case 'buggy': this.updBuggy(w, dt); break;
       case 'gyro': this.updGyro(w, dt); break;
+      case 'mine': this.updMine(w, dt); break;
+      case 'snapper': this.updSnapper(w, dt); break;
+      case 'moth': this.updMoth(w, dt); break;
     }
   }
   private updBuzzard(w: World, dt: number) {
@@ -397,11 +401,45 @@ export class Enemy {
         const tx = p.x + p.vx * T, ty = p.y - 40 + p.vy * T * 0.5;
         const sx = this.x, sy = this.y - 30;
         const vx = (tx - sx) / T, vy = (ty - sy - 0.5 * g * T * T) / T;
-        w.projectiles.push(new Projectile(sx, sy, vx, vy, 'mortar', 4));
+        w.projectiles.push(new Projectile(sx, sy, vx, vy, this.style === 'frozen' ? 'snow' : 'mortar', 4));
         w.fx.puff(sx, sy, 4); Audio.thump();
       }
     }
-    this.y = w.terrain.groundY(this.x);
+    this.y = w.terrain.floorY(this.x);
+  }
+  private updMine(w: World, dt: number) {
+    const sy = w.terrain.surfaceY(this.x);
+    this.y = sy - 4 + Math.sin(this.t * 2) * 3;
+    if (w.player.hitTest(this.x, this.y, this.r + 2)) {
+      w.player.hit(w, 1, this.x, this.y, 'mine');
+      this.hp = 0; this.dead = true; w.fx.explosion(this.x, this.y, 1, 'KA-SPLOOSH!'); Audio.explosion(1); w.onEnemyDestroyed(this);
+    }
+  }
+  private updSnapper(w: World, dt: number) {
+    const p = w.player;
+    const by = p.y + 20; // basket bottom
+    if (this.state === 'idle') {
+      this.lunge = Math.max(0, this.lunge - dt * 2);
+      if (this.cd <= 0 && Math.abs(p.x - this.x) < 80 && by > this.y - 190 && by < this.y) { this.state = 'windup'; this.st = 0; Audio.squawk(); }
+    } else if (this.state === 'windup') {
+      if (this.st > 0.55) { this.state = 'dive'; this.st = 0; Audio.puff(); }
+    } else if (this.state === 'dive') {
+      this.lunge = Math.min(1, this.lunge + dt * 6);
+      if (p.hitTest(this.x, this.cy, 18)) { p.hit(w, 1, this.x, this.cy, 'snapper'); w.fx.burst(this.x, this.cy - 20, 'CHOMP!', 22); }
+      if (this.st > 0.45) { this.state = 'idle'; this.cd = 1.6; }
+    }
+  }
+  private updMoth(w: World, dt: number) {
+    const p = w.player;
+    const d = dist(this.x, this.y, p.x, p.y - 80);
+    if (this.state === 'idle') { this.x = this.homeX + Math.sin(this.t * 0.7) * 50; this.y = this.homeY + Math.sin(this.t * 1.9) * 20; if (d < 420) this.state = 'approach'; return; }
+    const ang = Math.atan2(p.y - 80 - this.y, p.x - this.x) + Math.sin(this.t * 3) * 0.9;
+    const sp = this.state === 'dive' ? 190 : 95;
+    this.vx = lerp(this.vx, Math.cos(ang) * sp, 1 - Math.exp(-2 * dt)); this.vy = lerp(this.vy, Math.sin(ang) * sp, 1 - Math.exp(-2 * dt));
+    this.x += this.vx * dt; this.y += this.vy * dt;
+    this.facing = this.vx > 0 ? 1 : -1;
+    if (this.state === 'approach' && d < 160 && this.st > 1.2) { this.state = 'dive'; this.st = 0; }
+    if (this.state === 'dive' && this.st > 1.1) { this.state = 'approach'; this.st = 0; }
   }
   private updGyro(w: World, dt: number) {
     const p = w.player;
@@ -487,10 +525,55 @@ export class Enemy {
         pen.begin().m(-1, -34).q(6, -44, 13, -34).close().ink(P.steelDark, 2);
         pen.begin().m(2, -33).l(12, -33).stroke(3, P.brass);
         // wheels
-        for (const wx of [-20, 20]) { ctx.save(); ctx.translate(wx, -2); ctx.rotate(this.x / 10); pen.begin().ell(0, 0, 9, 9).ink('#2c2a2c', 2.4); pen.begin().m(-6, 0).l(6, 0).m(0, -6).l(0, 6).stroke(1.6, P.steel); ctx.restore(); }
+        if (this.style === 'flood') { pen.begin().m(-36, -4).l(36, -4).q(30, 10, 20, 10).l(-26, 10).q(-34, 6, -36, -4).close().ink(P.parchmentShade, 2.4); pen.begin().m(-30, 2).l(28, 2).stroke(1.5, P.red); }
+        else for (const wx of [-20, 20]) { ctx.save(); ctx.translate(wx, -2); ctx.rotate(this.x / 10); pen.begin().ell(0, 0, 9, 9).ink('#2c2a2c', 2.4); pen.begin().m(-6, 0).l(6, 0).m(0, -6).l(0, 6).stroke(1.6, P.steel); ctx.restore(); }
+        if (this.style === 'frozen') pen.begin().m(30, -2).l(40, -18).l(42, 2).close().ink(P.steelLight, 2);
         // exhaust
         if (Math.random() < 0.2) w.fx.puff(this.x - this.facing * 32, this.y - 8, 1, P.smoke, 4);
         if (wind) { ctx.scale(this.facing, 1); inkText(ctx, '!', 0, -56, 20, P.redBright, { outline: 4 }); }
+        break;
+      }
+      case 'mine': {
+        const r = 13;
+        pen.begin().ell(0, 0, r, r).ink(this.style === 'flood' ? '#3a3436' : P.steelDark, 2.6);
+        for (let a = 0; a < 8; a++) { const ca = Math.cos(a * 0.785), sa = Math.sin(a * 0.785); pen.begin().m(ca * r, sa * r).l(ca * (r + 6), sa * (r + 6)).stroke(3); }
+        ctx.fillStyle = Math.sin(this.t * 6) > 0 ? P.hot : P.redDark; ctx.beginPath(); ctx.arc(0, -4, 3, 0, 7); ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.beginPath(); ctx.arc(-5, -5, 3, 0, 7); ctx.fill();
+        break;
+      }
+      case 'snapper': {
+        const L = this.lunge * 130 + (wind ? Math.sin(this.t * 40) * 3 : 0);
+        // leafy base
+        for (const s2 of [-1, 1]) pen.begin().m(0, 0).q(s2 * 22, -6, s2 * 30, 4).q(s2 * 14, 6, 0, 0).close().ink('#4f7a2a', 2);
+        // stem
+        pen.begin().m(0, 0).q(Math.sin(this.t * 2) * 8, -L * 0.5 - 10, 0, -L - 20).stroke(7, P.ink);
+        pen.begin().m(0, 0).q(Math.sin(this.t * 2) * 8, -L * 0.5 - 10, 0, -L - 20).stroke(4, '#5f8a32');
+        // jaws
+        ctx.save(); ctx.translate(0, -L - 26);
+        const open = this.state === 'dive' ? 0.15 : wind ? 0.9 : 0.5 + Math.sin(this.t * 3) * 0.1;
+        for (const s2 of [-1, 1]) {
+          ctx.save(); ctx.rotate(s2 * open);
+          pen.begin().m(0, 0).q(s2 * 4, -26, s2 * 20, -22).q(s2 * 14, -6, 0, 0).close().ink(this.hitFlash > 0 ? P.white : '#8ab04a', 2.4);
+          pen.begin().m(0, -2).q(s2 * 4, -20, s2 * 16, -19).stroke(2, P.redBright);
+          for (let k = 0; k < 4; k++) { const tx = s2 * (4 + k * 4), ty = -10 - k * 3; pen.begin().m(tx, ty).l(tx - s2 * 4, ty - 4).stroke(1.5, P.white); }
+          ctx.restore();
+        }
+        ctx.restore();
+        if (wind) inkText(ctx, '!', 0, -L - 70, 20, P.redBright, { outline: 4 });
+        break;
+      }
+      case 'moth': {
+        ctx.scale(this.facing, 1);
+        if (this.dying > 0) ctx.rotate(this.dying * 6);
+        const flap = Math.sin(this.t * 14);
+        for (const s2 of [1, -1]) {
+          pen.begin().m(0, 0).q(-10, -20 * s2 * (0.5 + flap * 0.5) - 6, -26, -18 * s2 * (0.4 + flap * 0.6)).q(-20, 4, 0, 4).close().ink(s2 > 0 ? '#c8a878' : '#a88858', 2.2);
+          ctx.fillStyle = P.purple; ctx.beginPath(); ctx.arc(-14, -10 * s2 * (0.4 + flap * 0.6), 4, 0, 7); ctx.fill();
+        }
+        pen.begin().ell(2, 0, 12, 7).ink(this.hitFlash > 0 ? P.white : '#7a6a4a', 2.2);
+        pen.begin().ell(14, -2, 6, 6).ink('#7a6a4a', 2);
+        pen.begin().ell(16, -3, 2.6, 2.6).fill(P.hot);
+        pen.begin().m(15, -7).q(20, -18, 26, -14).m(13, -7).q(14, -18, 20, -18).stroke(1.4);
         break;
       }
       case 'gyro': {
@@ -535,7 +618,7 @@ function drawWrench(ctx: CanvasRenderingContext2D) {
 // PROJECTILES
 // ===================================================================
 export class Projectile {
-  x: number; y: number; vx: number; vy: number; kind: 'flak' | 'mortar' | 'wrench' | 'junk'; fuse: number; dead = false; t = 0; r: number; bursting = 0;
+  x: number; y: number; vx: number; vy: number; kind: 'flak' | 'mortar' | 'wrench' | 'junk' | 'snow'; fuse: number; dead = false; t = 0; r: number; bursting = 0;
   constructor(x: number, y: number, vx: number, vy: number, kind: Projectile['kind'], fuse: number) {
     this.x = x; this.y = y; this.vx = vx; this.vy = vy; this.kind = kind; this.fuse = fuse;
     this.r = kind === 'flak' ? 6 : kind === 'junk' ? 12 : 7;
@@ -549,8 +632,12 @@ export class Projectile {
     if (this.kind === 'flak') {
       if (this.t >= this.fuse || p.hitTest(this.x, this.y, 10)) this.burst(w);
     } else {
-      if (p.hitTest(this.x, this.y, this.r)) { p.hit(w, 1, this.x, this.y); this.dead = true; w.fx.explosion(this.x, this.y, 0.4); Audio.explosion(0.4); return; }
-      if (this.y > w.terrain.surfaceY(this.x) || this.t > this.fuse) { this.dead = true; w.fx.explosion(this.x, this.y, 0.45); Audio.explosion(0.4); }
+      if (p.hitTest(this.x, this.y, this.r)) {
+        this.dead = true;
+        if (this.kind === 'snow') { p.ice = Math.min(1, p.ice + 0.35); p.vx += this.vx * 0.3; p.wobble = 1; w.fx.puff(this.x, this.y, 8, P.white, 9); w.fx.burst(this.x, this.y - 20, 'SPLAT!', 18, P.white); Audio.puff(); return; }
+        p.hit(w, 1, this.x, this.y); w.fx.explosion(this.x, this.y, 0.4); Audio.explosion(0.4); return;
+      }
+      if (this.y > w.terrain.surfaceY(this.x) || this.t > this.fuse) { this.dead = true; if (this.kind === 'snow') { w.fx.puff(this.x, this.y, 6, P.white, 8); Audio.puff(); } else { w.fx.explosion(this.x, this.y, 0.45); Audio.explosion(0.4); } }
     }
   }
   burst(w: World) {
@@ -568,6 +655,8 @@ export class Projectile {
       pen.begin().ell(this.x, this.y, 6, 6).ink(P.ink, 0);
       ctx.fillStyle = Math.sin(this.t * 40) > 0 ? P.hot : P.flame2; ctx.beginPath(); ctx.arc(this.x, this.y, 2.5, 0, 7); ctx.fill();
       ctx.strokeStyle = 'rgba(42,26,20,0.4)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(this.x, this.y); ctx.lineTo(this.x - this.vx * 0.05, this.y - this.vy * 0.05); ctx.stroke();
+    } else if (this.kind === 'snow') {
+      pen.begin().ell(this.x, this.y, 8, 8).ink(P.white, 2); ctx.fillStyle = '#c8d8e8'; ctx.beginPath(); ctx.arc(this.x + 2, this.y + 2, 4, 0, 7); ctx.fill();
     } else if (this.kind === 'mortar' || this.kind === 'junk') {
       ctx.save(); ctx.translate(this.x, this.y); ctx.rotate(this.t * 6);
       if (this.kind === 'junk') { pen.begin().poly([[-12, -8], [10, -11], [13, 7], [-6, 12], [-13, 3]]).ink(P.rust, 2.4); pen.begin().ell(0, 0, 4, 4).fill(P.steelDark); }
@@ -655,19 +744,20 @@ export class PowerLine {
 }
 
 export class Smokestack {
-  x: number; topY: number; t: number; period = 5.5; active = 0; warn = 0; cool: number;
-  constructor(x: number, topY: number) { this.x = x; this.topY = topY; this.t = rand(0, 3); this.cool = rand(1.5, 3.5); }
+  x: number; topY: number; t: number; period = 5.5; active = 0; warn = 0; cool: number; fire: boolean;
+  constructor(x: number, topY: number, fire = false) { this.x = x; this.topY = topY; this.t = rand(0, 3); this.cool = rand(1.5, 3.5); this.fire = fire; }
   update(w: World, dt: number) {
     this.t += dt;
     if (this.active > 0) {
       this.active -= dt;
-      for (let i = 0; i < 2; i++) w.fx.add({ kind: 'soot', x: this.x + rand(-14, 14), y: this.topY - rand(0, 10), vx: rand(-20, 20) + w.wind * 0.3, vy: rand(-260, -200), r: rand(14, 22), life: rand(0.9, 1.3), max: 1.3, color: pick(['#2f2624', '#3b302c', '#4a3d38']), drag: 0.6 });
+      for (let i = 0; i < 2; i++) w.fx.add({ kind: 'soot', x: this.x + rand(-14, 14), y: this.topY - rand(0, 10), vx: rand(-20, 20) + w.wind * 0.3, vy: rand(-260, -200), r: rand(14, 22), life: rand(0.9, 1.3), max: 1.3, color: this.fire ? pick(['#5a2a1a', '#3b302c', '#7a3a1a']) : pick(['#2f2624', '#3b302c', '#4a3d38']), drag: 0.6 });
+      if (this.fire) for (let i = 0; i < 2; i++) w.fx.add({ kind: 'flame', x: this.x + rand(-12, 12), y: this.topY - rand(0, 30), vx: rand(-15, 15), vy: rand(-320, -220), r: rand(8, 14), life: rand(0.5, 0.8), max: 0.8, drag: 0.5 });
       if (this.active <= 0) this.cool = rand(2.5, 4);
       // damage + updraft
       const p = w.player;
       if (Math.abs(p.x - this.x) < 34 && p.y < this.topY + 20 && p.y > this.topY - 300) {
         p.vy -= 600 * dt;
-        if (!p.stats.bucket) p.hit(w, 1, this.x, p.y - 40, 'soot');
+        if (!p.stats.bucket) p.hit(w, 1, this.x, p.y - 40, this.fire ? 'fire' : 'soot');
       }
     } else if (this.warn > 0) {
       this.warn -= dt;
@@ -681,6 +771,11 @@ export class Smokestack {
     }
   }
   draw(ctx: CanvasRenderingContext2D) {
+    if (this.fire) { // ground vent grate
+      pen.use(ctx, 0.4);
+      pen.begin().m(this.x - 26, this.topY + 6).q(this.x, this.topY - 14, this.x + 26, this.topY + 6).close().ink('#3a2c28', 2.5);
+      ctx.fillStyle = this.warn > 0 || this.active > 0 ? '#ffb040' : '#a83a1a'; ctx.beginPath(); ctx.ellipse(this.x, this.topY - 2, 12, 4, 0, 0, 7); ctx.fill();
+    }
     if (this.warn > 0) {
       const a = Math.sin(this.t * 20) > 0;
       ctx.fillStyle = a ? 'rgba(255,59,47,0.35)' : 'rgba(255,181,52,0.25)';
@@ -691,15 +786,64 @@ export class Smokestack {
 }
 
 export class Gust {
-  x: number; w: number; fx: number; fy: number; t = 0;
-  constructor(x: number, w: number, fx: number, fy: number) { this.x = x; this.w = w; this.fx = fx; this.fy = fy; }
+  x: number; w: number; fx: number; fy: number; t = 0; style: 'wind' | 'sand' | 'snow';
+  constructor(x: number, w: number, fx: number, fy: number, style: 'wind' | 'sand' | 'snow' = 'wind') { this.x = x; this.w = w; this.fx = fx; this.fy = fy; this.style = style; }
   contains(px: number) { return px > this.x && px < this.x + this.w; }
   draw(ctx: CanvasRenderingContext2D, top: number, t: number) {
-    ctx.strokeStyle = 'rgba(255,250,235,0.55)'; ctx.lineWidth = 2; ctx.lineCap = 'round';
-    for (let i = 0; i < 14; i++) {
+    ctx.strokeStyle = this.style === 'sand' ? 'rgba(220,170,100,0.7)' : this.style === 'snow' ? 'rgba(255,255,255,0.8)' : 'rgba(255,250,235,0.55)'; ctx.lineWidth = this.style === 'wind' ? 2 : 3; ctx.lineCap = 'round';
+    if (this.style !== 'wind') { ctx.fillStyle = this.style === 'sand' ? 'rgba(220,170,100,0.18)' : 'rgba(240,245,250,0.2)'; ctx.fillRect(this.x, top, this.w, 600); }
+    for (let i = 0; i < (this.style === 'wind' ? 14 : 30); i++) {
       const lx = this.x + ((i * 97 + t * this.fx * 1.2) % this.w + this.w) % this.w;
       const ly = top + 60 + ((i * 53) % 380) + Math.sin(t * 2 + i) * 10 + t * this.fy * 0.3 % 50;
       ctx.beginPath(); ctx.moveTo(lx, ly); ctx.quadraticCurveTo(lx + Math.sign(this.fx) * 20, ly - 6, lx + Math.sign(this.fx) * 40, ly); ctx.stroke();
+    }
+  }
+}
+
+/** Thunderhead that fires telegraphed lightning bolts at the balloon while it's underneath. */
+export class Storm {
+  x: number; w: number; y = 40; t = rand(0, 3); cd = rand(1.5, 3); warn = 0; strikeX = 0; bolt = 0; boltPts: number[][] = [];
+  constructor(x: number, w: number) { this.x = x; this.w = w; }
+  update(w: World, dt: number) {
+    this.t += dt;
+    const p = w.player;
+    const under = p.x > this.x && p.x < this.x + this.w;
+    this.bolt = Math.max(0, this.bolt - dt);
+    if (this.warn > 0) {
+      this.warn -= dt;
+      if (this.warn <= 0) {
+        this.bolt = 0.25;
+        const gy = w.terrain.surfaceY(this.strikeX);
+        this.boltPts = [];
+        for (let yy = this.y + 20; yy < gy; yy += 26) this.boltPts.push([this.strikeX + rand(-14, 14), yy]);
+        this.boltPts.push([this.strikeX, gy]);
+        w.fx.flash = Math.max(w.fx.flash, 0.15); w.fx.shake = Math.max(w.fx.shake, 6);
+        Audio.zap(); Audio.explosion(0.6);
+        w.fx.sparks(this.strikeX, gy, 12, P.electric);
+        if (Math.abs(p.x - this.strikeX) < 30) p.zapped(w);
+      }
+    } else if (under) {
+      this.cd -= dt;
+      if (this.cd <= 0) { this.warn = 1.1; this.strikeX = p.x + p.vx * 0.8; this.cd = rand(2.2, 3.4); }
+    }
+  }
+  draw(ctx: CanvasRenderingContext2D, camY: number) {
+    const cy = Math.max(this.y, camY + 30);
+    pen.use(ctx, 0.6);
+    const flick = this.warn > 0 && Math.sin(this.t * 40) > 0;
+    for (let i = 0; i < Math.ceil(this.w / 70); i++) {
+      const cx = this.x + 35 + i * 70;
+      pen.begin().ell(cx, cy + Math.sin(i * 1.7) * 8, 52, 30).ink(flick ? '#8a8aa8' : '#4a4a5e', 2.5);
+    }
+    if (this.warn > 0) {
+      ctx.strokeStyle = `rgba(159,243,255,${0.3 + 0.4 * Math.sin(this.t * 30)})`; ctx.setLineDash([8, 8]); ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(this.strikeX, cy + 20); ctx.lineTo(this.strikeX, GROUND); ctx.stroke(); ctx.setLineDash([]);
+    }
+    if (this.bolt > 0 && this.boltPts.length) {
+      for (const [wdt, col] of [[9, P.ink], [5, P.electric], [2, P.white]] as [number, string][]) {
+        ctx.strokeStyle = col; ctx.lineWidth = wdt; ctx.lineJoin = 'miter';
+        ctx.beginPath(); ctx.moveTo(this.strikeX, cy + 20); for (const [bx, by] of this.boltPts) ctx.lineTo(bx, by); ctx.stroke();
+      }
     }
   }
 }

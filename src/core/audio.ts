@@ -20,6 +20,34 @@ function chordNotes(c: string): { root: number; tones: number[] } {
 const midiF = (m: number) => 440 * Math.pow(2, (m - 69) / 12);
 
 const SONGS: Record<string, Song> = {
+  desert: {
+    bpm: 118, steps: 8, style: 'march',
+    chords: ['Dm', 'Eb', 'Dm', 'C', 'Dm', 'Eb', 'C', 'Dm'],
+    melody: ('D5 - Eb5 F5 A5 - G5 F5 | Eb5 - D5 - C5 - D5 . | F5 G5 A5 - Bb5 A5 G5 F5 | E5 - G5 - C5 - . . | ' +
+      'D5 . D5 Eb5 F5 - A5 . | G5 F5 Eb5 - D5 - C5 . | E5 F5 G5 - C6 - Bb5 G5 | D5 - - - . . . .').split(/\s+/).filter((x) => x !== '|'),
+  },
+  sea: {
+    bpm: 138, steps: 6, style: 'waltz',
+    chords: ['G', 'Em', 'C', 'D7', 'G', 'Em', 'Am', 'D7'],
+    melody: ('D5 - G5 - B5 - | B5 - A5 - G5 - | E5 - G5 - C6 - | A5 - - - F#5 - | D5 - G5 - B5 - | D6 - C6 - B5 - | A5 - C6 - E5 - | D5 - - - . .').split(/\s+/).filter((x) => x !== '|'),
+  },
+  jungle: {
+    bpm: 140, steps: 8, style: 'march',
+    chords: ['Am', 'G', 'F', 'E7', 'Am', 'G', 'F', 'E7'],
+    melody: ('A4 C5 E5 A5 - G5 E5 . | D5 - G5 - B5 - D5 . | C5 F5 A5 - C6 A5 F5 . | E5 G#5 B5 - - . E5 . | ' +
+      'A5 . A5 G5 E5 - C5 . | B4 D5 G5 - D5 - B4 . | A4 C5 F5 - A5 - C6 . | B5 - G#5 - E5 - . .').split(/\s+/).filter((x) => x !== '|'),
+  },
+  ice: {
+    bpm: 112, steps: 6, style: 'waltz',
+    chords: ['Em', 'C', 'G', 'B7', 'Em', 'Am', 'B7', 'Em'],
+    melody: ('B5 - - - G5 - | E5 - G5 - C6 - | B5 - D6 - B5 - | A5 - - - F#5 - | G5 - B5 - E6 - | C6 - B5 - A5 - | F#5 - A5 - D#6 - | E6 - - - . .').split(/\s+/).filter((x) => x !== '|'),
+  },
+  ash: {
+    bpm: 146, steps: 8, style: 'boss',
+    chords: ['Cm', 'Cm', 'Ab', 'G7', 'Cm', 'Bb', 'Ab', 'G7'],
+    melody: ('C5 . C5 Eb5 G5 . F5 Eb5 | D5 . B4 . C5 - - . | C5 Eb5 Ab5 - G5 F5 Eb5 C5 | D5 F5 B5 - G5 - - . | ' +
+      'G5 . G5 . Ab5 G5 F5 Eb5 | F5 - D5 - Bb4 - D5 . | Eb5 F5 G5 Ab5 C6 - Ab5 . | G5 - D5 - B4 - . .').split(/\s+/).filter((x) => x !== '|'),
+  },
   flight: {
     bpm: 132, steps: 8, style: 'march',
     chords: ['F', 'F', 'C7', 'C7', 'Bb', 'F', 'C7', 'F', 'Dm', 'Dm', 'Bb', 'C7', 'F', 'Dm', 'C7', 'F'],

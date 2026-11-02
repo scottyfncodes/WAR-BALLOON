@@ -1,5 +1,6 @@
 import { RNG } from '../core/math';
 import type { MissionSpec, EntSpec } from './types';
+import { REGION_MISSIONS } from './missionsRegions';
 
 type B = { x: number; w: number; h: number; chimney?: boolean };
 
@@ -149,26 +150,33 @@ const M4: MissionSpec = {
 };
 
 /** Free-flight scavenging run — regenerated every launch. */
-export function makeScavenge(seed: number): MissionSpec {
+import { BIOMES, type BiomeId } from './biomes';
+export function makeScavenge(seed: number, biomeId: BiomeId = 'city'): MissionSpec {
   const rng = new RNG(seed);
+  const bio = BIOMES[biomeId];
   const length = 6000;
   const buildings = fill(400, length - 400, seed, 80, 280, [], [60, 200]);
   const ents: EntSpec[] = [];
-  const kinds = ['scrap', 'scrap', 'scrap', 'fabric', 'fuel', 'food', 'water', 'electronics', 'crate', 'mystery'];
+  const kinds: string[] = [...bio.loot, 'crate', 'mystery'];
   for (let x = 500; x < length - 400; x += rng.range(140, 260)) ents.push({ t: 'item', x, kind: rng.pick(kinds), alt: rng.chance(0.2) ? rng.range(200, 380) : undefined });
-  const enemies = ['buzzard', 'turret', 'buggy', 'gyro', 'buzzard'];
-  for (let x = 900; x < length - 500; x += rng.range(450, 750)) { const k = rng.pick(enemies); ents.push({ t: 'enemy', x, kind: k, alt: k === 'buzzard' || k === 'gyro' ? rng.range(250, 380) : undefined, w: 150 }); }
+  const enemies = ({ city: ['buzzard', 'turret', 'buggy', 'gyro', 'buzzard'], dust: ['buggy', 'buzzard', 'turret', 'gyro'], flood: ['mine', 'buzzard', 'turret', 'gyro'], green: ['snapper', 'moth', 'moth', 'turret'], frozen: ['buggy', 'gyro', 'buzzard', 'turret'], ash: ['turret', 'gyro', 'buzzard'] } as Record<BiomeId, string[]>)[biomeId];
+  for (let x = 900; x < length - 500; x += rng.range(450, 750)) { const k = rng.pick(enemies); ents.push({ t: 'enemy', x, kind: k, alt: k === 'buzzard' || k === 'gyro' || k === 'moth' ? rng.range(220, 300) : undefined, w: 150 }); }
   for (let x = 1200; x < length - 600; x += rng.range(900, 1400)) ents.push({ t: 'target', x, kind: rng.pick(['junkpile', 'cratestack', 'depot']) });
   for (let x = 1500; x < length - 600; x += rng.range(1200, 1800)) ents.push({ t: 'power', x, kind: rng.pick(['cluster', 'shield', 'hotair', 'bombs']), alt: rng.range(260, 380) });
-  if (rng.chance(0.6)) { const x = rng.range(1500, 4000); ents.push({ t: 'powerline', x, x2: x + 420, alt: rng.range(150, 230) }); }
+  if (biomeId === 'city' && rng.chance(0.6)) { const x = rng.range(1500, 4000); ents.push({ t: 'powerline', x, x2: x + 420, alt: rng.range(150, 230) }); }
+  if (biomeId === 'dust' || biomeId === 'frozen') ents.push({ t: 'gust', x: rng.range(1500, 3500), w: 700, fx: rng.chance(0.5) ? 150 : -150, fy: 0, style: biomeId === 'dust' ? 'sand' : 'snow' });
+  if (biomeId === 'flood' || biomeId === 'frozen') ents.push({ t: 'storm', x: rng.range(1800, 3800), w: 600 });
   return {
-    id: 'scav', name: 'Scavenger Run', subtitle: 'Free Flight · The Dead City', giver: 'Granny Gert', free: true,
+    id: 'scav', name: 'Scavenger Run', giver: 'Granny Gert', free: true,
     brief: 'No orders, no fuss. Fly out, grab everything that isn\'t nailed down (and bomb what is), then come home. The city reshuffles every run.',
-    length, seed, wind: rng.range(-12, 14), music: 'flight', mapPos: [0.3, 0.84], rewards: { scrap: 4 }, requires: 'm1',
+    length, seed, wind: rng.range(-12, 14), music: bio.music, mapPos: [0.3, 0.84], rewards: { scrap: 4 }, requires: 'm1', biome: biomeId,
+    subtitle: 'Free Flight · ' + bio.name, lava: biomeId === 'ash' ? buildings.slice(0, -1).map((b, i) => [b.x + b.w + 20, Math.max(0, buildings[i + 1].x - b.x - b.w - 40)] as [number, number]).filter((l) => l[1] > 90 && rng.chance(0.5)) : [],
     buildings, ents,
     objectives: [{ id: 'o1', text: 'Collect 20 scrap', type: 'collect', kind: 'scrap', count: 20, optional: true }],
   };
 }
 
-export const MISSIONS: MissionSpec[] = [M1, M2, M3, M4];
+for (const m of [M1, M2, M3, M4]) m.biome = 'city';
+export const MISSIONS: MissionSpec[] = [M1, M2, M3, M4, ...REGION_MISSIONS];
+export const missionsIn = (biome: string) => MISSIONS.filter((m) => (m.biome ?? 'city') === biome);
 export const missionById = (id: string) => MISSIONS.find((m) => m.id === id);

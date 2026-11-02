@@ -2,6 +2,8 @@ import { P } from '../render/palette';
 import { makeCanvas, pen } from '../render/ink';
 import { paintBuilding, mix } from '../render/paint';
 import { RNG, noise1 } from '../core/math';
+import { BIOMES, type Biome } from './biomes';
+import { overlayBuilding } from '../render/biomeArt';
 
 export const GROUND = 500;
 export const CEILING = 50;
@@ -19,31 +21,36 @@ export class Terrain {
   chunks: HTMLCanvasElement[] = [];
   chunkW = 1024;
   seed: number;
-  constructor(length: number, seed: number, specs: BuildingSpec[]) {
-    this.length = length; this.seed = seed;
+  biome: Biome;
+  lava: [number, number][];
+  constructor(length: number, seed: number, specs: BuildingSpec[], biome: Biome = BIOMES.city, lava: [number, number][] = []) {
+    this.length = length; this.seed = seed; this.biome = biome; this.lava = lava;
     const rng = new RNG(seed);
     specs.sort((a, b) => a.x - b.x).forEach((s, i) => this.addBuilding(s, rng, i));
     for (let cx = 0; cx < length + 200; cx += this.chunkW) this.chunks.push(this.paintChunk(cx));
   }
   groundY(x: number) { return GROUND - 10 - noise1(x / 140 + this.seed) * 22 - noise1(x / 37 + 9) * 6; }
   /** Highest solid surface under x (smallest y). */
+  /** Ground or water surface, whichever is higher. */
+  floorY(x: number) { const g = this.groundY(x); return this.biome.water !== undefined ? Math.min(g, this.biome.water) : g; }
   surfaceY(x: number) {
-    let y = this.groundY(x);
+    let y = this.floorY(x);
     for (const b of this.buildings) if (x >= b.x && x <= b.x + b.w && b.top < y) y = b.top;
     return y;
   }
+  lavaAt(x: number) { return this.lava.some(([a, w]) => x > a && x < a + w); }
   buildingAt(x: number, y: number) { for (const b of this.buildings) if (x >= b.x && x <= b.x + b.w && y >= b.top) return b; return null; }
   private addBuilding(s: BuildingSpec, rng: RNG, i: number) {
     const pad = 30;
     const base = Math.max(this.groundY(s.x), this.groundY(s.x + s.w), this.groundY(s.x + s.w / 2)) + 14; // sunk into rubble
     const h = base - (this.groundY(s.x + s.w / 2) - s.h);
-    const palettes = [[P.tealDark, '#2a4c51', P.parchmentDark], ['#7d5a47', '#5f4334', P.parchmentDark], ['#6e6a4a', '#55513a', P.parchmentDark], ['#8a6a50', '#6b503b', P.parchmentDark], ['#596a6e', '#46555a', P.parchmentDark]];
-    const pal = rng.pick(palettes);
+    const pal = rng.pick(this.biome.buildings);
     const cw = s.w + pad * 2, ch = h + 120;
     const [c, x] = makeCanvas(cw * ART, ch * ART);
     x.scale(ART, ART);
     x.translate(pad, ch - 4);
-    paintBuilding(x, { w: s.w, h, base: pal[0], shade: pal[1], trim: pal[2], win: '#2a2426', lit: '#f5c76a', outline: 3, detail: 2, seed: rng.int(0, 99999), broken: false, flatTop: true, style: rng.int(0, 2), rust: true, vines: rng.chance(0.5) });
+    paintBuilding(x, { w: s.w, h, base: pal[0], shade: pal[1], trim: pal[2], win: '#2a2426', lit: '#f5c76a', outline: 3, detail: 2, seed: rng.int(0, 99999), broken: false, flatTop: true, style: rng.int(0, 2), rust: true, vines: this.biome.id === 'city' && rng.chance(0.5) });
+    overlayBuilding(x, this.biome, s.w, h, rng.int(0, 9999));
     pen.use(x, 0);
     // rooftop clutter (doesn't affect collision; sits on roof plane)
     if (s.chimney) {
@@ -77,13 +84,14 @@ export class Terrain {
     // soil body
     x.beginPath(); x.moveTo(0, H); pts.forEach((p) => x.lineTo(p[0], p[1])); x.lineTo(W, H); x.closePath();
     const g = x.createLinearGradient(0, 30, 0, H);
-    g.addColorStop(0, '#7a5a3e'); g.addColorStop(0.3, '#5e4330'); g.addColorStop(1, '#3a281c');
+    const gp = this.biome.ground;
+    g.addColorStop(0, gp.mid); g.addColorStop(0.3, gp.mid); g.addColorStop(1, gp.deep);
     x.fillStyle = g; x.fill();
     x.save(); x.clip();
     // strata + rubble
     for (let i = 0; i < 70; i++) {
       const rx = rng.range(0, W), ry = rng.range(40, H);
-      x.fillStyle = rng.pick(['#4d3a2a', '#6b5038', '#806248', '#3e2e22', P.rustDark]);
+      x.fillStyle = rng.pick([...gp.bits, gp.deep]);
       x.beginPath(); x.ellipse(rx, ry, rng.range(3, 12), rng.range(2, 6), rng.range(0, 3), 0, Math.PI * 2); x.fill();
     }
     // buried pipes & slabs
@@ -96,16 +104,24 @@ export class Terrain {
     x.restore();
     // cracked asphalt topping
     x.beginPath(); pts.forEach((p, i) => (i ? x.lineTo(p[0], p[1]) : x.moveTo(p[0], p[1])));
-    x.lineWidth = 9; x.strokeStyle = '#4a4440'; x.stroke();
-    x.lineWidth = 3; x.strokeStyle = P.ink; x.stroke();
+    x.lineWidth = this.biome.id === 'frozen' ? 16 : 9; x.strokeStyle = gp.top; x.stroke();
+    x.lineWidth = 3; x.strokeStyle = gp.edge; x.stroke();
+    // lava pools
+    for (const [lx, lw] of this.lava) {
+      if (lx + lw < cx || lx > cx + W) continue;
+      const a = lx - cx, gy0 = this.groundY(lx + lw / 2) - top;
+      const lg = x.createLinearGradient(0, gy0 - 6, 0, gy0 + 14); lg.addColorStop(0, '#ffd070'); lg.addColorStop(0.4, '#ff7a2a'); lg.addColorStop(1, '#a8301a');
+      pen.begin().m(a, gy0 + 4).q(a + lw / 2, gy0 - 10, a + lw, gy0 + 4).q(a + lw / 2, gy0 + 22, a, gy0 + 4).close().ink(lg, 3);
+      for (let k = 0; k < lw / 20; k++) { x.fillStyle = 'rgba(255,240,180,0.7)'; x.beginPath(); x.ellipse(a + rng.range(8, lw - 8), gy0 + rng.range(-1, 6), rng.range(3, 7), 2, 0, 0, Math.PI * 2); x.fill(); }
+    }
     // weeds & bits on top
     for (let i = 0; i < 40; i++) {
       const wx = rng.range(0, W); const wy = this.groundY(cx + wx) - top;
       if (rng.chance(0.6)) {
-        x.strokeStyle = rng.pick([P.olive, P.oliveLight, P.oliveDark]); x.lineWidth = 2;
+        x.strokeStyle = rng.pick(gp.tufts); x.lineWidth = 2;
         for (let k = 0; k < 4; k++) { x.beginPath(); x.moveTo(wx + k * 2, wy); x.quadraticCurveTo(wx + k * 2 + rng.range(-4, 4), wy - 6, wx + k * 3 + rng.range(-6, 6), wy - rng.range(6, 14)); x.stroke(); }
       } else {
-        pen.begin().poly([[wx - 6, wy + 2], [wx - 3, wy - rng.range(4, 9)], [wx + 6, wy - rng.range(2, 6)], [wx + 8, wy + 2]]).ink(rng.pick(['#8b7d70', '#6f625a', '#9a5a40']), 1.8);
+        pen.begin().poly([[wx - 6, wy + 2], [wx - 3, wy - rng.range(4, 9)], [wx + 6, wy - rng.range(2, 6)], [wx + 8, wy + 2]]).ink(rng.pick(gp.bits), 1.8);
       }
     }
     return c;

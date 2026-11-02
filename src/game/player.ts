@@ -33,7 +33,7 @@ export class Player {
   damageTaken = 0; lastHitBy = '';
   burnerOn = false; prevBurner = false;
   lookX = 1; lookY = 0;
-  inflate = 0; launched = false;
+  inflate = 0; launched = false; ice = 0; soakT = 0; inWater = false;
 
   constructor(x: number, y: number, stats: Stats, levels: Record<string, number>, paint: string, extraFuel = 0, extraHp = 0) {
     this.x = x; this.y = y; this.stats = stats; this.levels = levels; this.paint = paint;
@@ -102,9 +102,16 @@ export class Player {
     else this.heat = lerp(this.heat, 0.22, 1 - Math.exp(-0.9 * dt));
     this.burnerVis = damp(this.burnerVis, this.burnerOn ? 1 : 0, 18, dt);
     Audio.burner(this.burnerVis * (0.7 + 0.3 * upAmt));
+    // ---------- icing (Frozen Reach) ----------
+    const iceAlt = w.terrain.biome.iceAlt;
+    if (iceAlt !== undefined && this.y < iceAlt && !st.heater) {
+      const before = this.ice;
+      this.ice = Math.min(1, this.ice + dt * 0.22);
+      if (before < 0.5 && this.ice >= 0.5) { w.fx.popup(this.x, this.y - 160, 'ICING UP!', P.tealLight, 18); Audio.voice('huh'); }
+    } else this.ice = Math.max(0, this.ice - dt * (this.burnerOn ? 0.5 : 0.25));
     // ---------- forces ----------
     const cw = this.cargoWeight();
-    const weight = 1 + (cw * 0.45) / (1 + st.cargoTolerance * 0.6);
+    const weight = 1 + (cw * 0.45) / (1 + st.cargoTolerance * 0.6) + this.ice * 0.9;
     let ay = 120 * weight - 360 * this.heat * st.liftMul;
     if (this.burnerOn) ay -= 70 * st.burnerPower * upAmt;
     if (wantDown) ay += 110 * clamp(c.y, 0, 1);
@@ -171,7 +178,24 @@ export class Player {
     }
     // ground: basket bottom
     const by = this.y + 20;
-    const gy = w.terrain.groundY(this.x);
+    let gy = w.terrain.groundY(this.x);
+    const water = w.terrain.biome.water;
+    this.inWater = false;
+    if (water !== undefined && by > water && gy > water) {
+      if (this.stats.pontoons) gy = water - 2; // float!
+      else {
+        this.inWater = true;
+        if (by > water + 2 && this.vy > 60) { w.fx.puff(this.x, water, 6, '#c8dcdc', 8); Audio.puff(); }
+        this.vy -= 260 * dt; this.vx *= Math.exp(-2.5 * dt); this.heat = Math.max(0.2, this.heat - dt * 0.4);
+        this.soakT += dt;
+        if (this.soakT > 1.4) { this.soakT = 0; this.hit(w, 1, this.x, water + 40, 'water'); w.fx.burst(this.x, this.y - 30, 'SOAKED!', 18, P.tealLight); }
+        gy = water + 18;
+      }
+    } else this.soakT = Math.max(0, this.soakT - dt);
+    if (by > gy - 2 && w.terrain.lavaAt(this.x) && water === undefined) {
+      if (!this.stats.bucket || this.invuln <= 0) this.hit(w, 1, this.x, gy, 'lava');
+      this.vy = -240; w.fx.burst(this.x, this.y - 20, 'YEEOWCH!', 20); for (let i = 0; i < 6; i++) w.fx.add({ kind: 'flame', x: this.x + (Math.random() - 0.5) * 30, y: gy, vx: 0, vy: -120, r: 8, life: 0.5, max: 0.5 });
+    }
     if (by > gy) {
       this.y -= by - gy;
       if (this.vy > 0) {
@@ -413,7 +437,7 @@ export class Player {
       lookX: this.lookX, lookY: this.lookY, blink: this.blink, scarf: scarfLocal, bombs: this.bombs, bombCap: this.stats.bombCap,
       propSpin: this.propSpin, boosting: this.boosting > 0, shield: this.shield, flash: this.invuln > 0 && Math.floor(this.t * 14) % 2 === 0 && !this.dead,
       goggleDown: this.boosting > 0 || this.hotairT > 0 || this.expr === 'determined', zap: this.zapT,
-      inflate: this.inflate, dizzy: this.dead || this.expr === 'hurt',
+      inflate: this.inflate, dizzy: this.dead || this.expr === 'hurt', ice: this.ice,
     });
     ctx.restore();
     // hot air aura

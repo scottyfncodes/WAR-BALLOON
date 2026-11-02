@@ -51,11 +51,13 @@ export interface Stats {
   deflect: number; bucket: boolean; patchKit: boolean; pontoons: boolean; heater: boolean;
   bombCap: number; reloadTime: number; blastMul: number; cluster: boolean;
   envelopeScale: number;
+  fuelPickup: number; patchEvery: number;
 }
 
-export function computeStats(levels: Record<string, number>): Stats {
+export function computeStats(levels: Record<string, number>, perks: string[] = []): Stats {
   const L = (id: string) => levels[id] ?? 0;
-  return {
+  const has = (id: string) => perks.includes(id);
+  const st: Stats = {
     maxHp: 3 + L('envelope'),
     liftMul: 1 + 0.18 * L('lift'),
     cargoTolerance: L('lift'),
@@ -81,5 +83,13 @@ export function computeStats(levels: Record<string, number>): Stats {
     blastMul: 1 + 0.3 * L('blast'),
     cluster: L('cluster') > 0,
     envelopeScale: 1 + 0.08 * L('lift'),
+    fuelPickup: 1, patchEvery: L('patchkit') > 0 ? 30 : 0,
   };
+  if (has('workshop')) st.bombCap += 1;
+  if (has('fuelrich')) st.fuelPickup = 1.5;
+  if (has('longrope')) st.ropeLen *= 1.15;
+  if (has('herbal')) st.patchEvery = L('patchkit') > 0 ? 20 : 45;
+  if (has('lab')) st.reloadTime *= 0.85;
+  if (has('forge')) st.blastMul += 0.15;
+  return st;
 }

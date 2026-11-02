@@ -55,6 +55,10 @@ export class TitleScene implements Scene {
       UI.button(ctx, 'play', bxp, H * 0.5, bw, 62, started ? 'CONTINUE' : 'FLY!', () => { Audio.ignite(); go(s.seenIntro ? Scenes.map : Scenes.intro); }, { style: 'red', size: 32, keys: ['Enter'] });
       UI.button(ctx, 'music', bxp, H * 0.5 + 76, 110, 40, s.music ? 'MUSIC ♪' : 'MUSIC ✕', () => { s.music = !s.music; Audio.setMusic(s.music); Save.write(); }, { style: s.music ? 'teal' : 'paper', size: 16 });
       UI.button(ctx, 'sfx', bxp + 120, H * 0.5 + 76, 110, 40, s.sfx ? 'SOUND ♪' : 'SOUND ✕', () => { s.sfx = !s.sfx; Audio.setSfx(s.sfx); Save.write(); }, { style: s.sfx ? 'teal' : 'paper', size: 16 });
+      const dl: Record<string, string> = { relaxed: 'RELAXED', normal: 'NORMAL', hard: 'HARD' };
+      const nextD: Record<string, 'relaxed' | 'normal' | 'hard'> = { relaxed: 'normal', normal: 'hard', hard: 'relaxed' };
+      UI.button(ctx, 'diff', bxp + bw + 12, H * 0.5 + 76, 120, 40, dl[s.difficulty], () => { s.difficulty = nextD[s.difficulty]; Save.write(); }, { style: s.difficulty === 'hard' ? 'red' : s.difficulty === 'relaxed' ? 'olive' : 'brass', size: 15, sub: 'difficulty' });
+      bodyText(ctx, s.difficulty === 'relaxed' ? '+2 patches, gentler foes' : s.difficulty === 'hard' ? '−1 patch, angrier foes, +25% rewards' : 'as intended', bxp + bw + 72, H * 0.5 + 130, 13, 'rgba(241,223,184,0.9)', 'center');
       if (started) {
         UI.button(ctx, 'intro', bxp, H * 0.5 + 126, 110, 34, 'INTRO', () => go(Scenes.intro), { style: 'ghost', size: 14 });
         UI.button(ctx, 'reset', bxp + 120, H * 0.5 + 126, 110, 34, 'NEW GAME', () => { this.confirmReset = true; }, { style: 'ghost', size: 14 });

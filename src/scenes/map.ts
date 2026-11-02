@@ -136,6 +136,9 @@ export class MapScene implements Scene {
     pen.begin().m(hv.x - 22, hv.y + 8).l(hv.x - 22, hv.y - 10).l(hv.x, hv.y - 26).l(hv.x + 22, hv.y - 10).l(hv.x + 22, hv.y + 8).close().ink(P.orange, 2.5);
     pen.begin().rect(hv.x - 6, hv.y - 4, 12, 12).ink(P.brownDark, 2);
     inkText(ctx, CAMPS[this.region], hv.x, hv.y + 22, 15, P.parchment, { outline: 3 });
+    const reqLeft = 3 - (s.camps[this.region] ?? 0);
+    UI.button(ctx, 'camp', hv.x - 40, hv.y + 34, 80, 28, 'VISIT', () => go(Scenes.camp, { region: this.region }), { style: 'brass', size: 13 });
+    if (reqLeft > 0 && Math.sin(this.t * 5) > 0) inkText(ctx, '!', hv.x + 28, hv.y - 24, 20, P.redBright, { outline: 4 });
     // nodes
     this.list.forEach((m, i) => {
       const p = this.nodePos(m); const un = this.unlocked(m); const rec = s.missions[m.id];

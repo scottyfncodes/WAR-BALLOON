@@ -30,7 +30,7 @@ export class ResultsScene implements Scene {
     this.gains = { fuel: 0, scrap: 0, fabric: 0, food: 0, water: 0, electronics: 0 };
     for (const k of RES_KEYS) {
       const c = w.collected[k];
-      this.gains[k] = this.success ? c + (this.spec.rewards[k] ?? 0) : Math.floor(c * 0.5);
+      this.gains[k] = this.success ? Math.round((c + (this.spec.rewards[k] ?? 0)) * (s.difficulty === 'hard' ? 1.25 : 1)) : Math.floor(c * 0.5);
       s.res[k] += this.gains[k];
     }
     if (this.success) {

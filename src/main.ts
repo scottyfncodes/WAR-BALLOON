@@ -12,6 +12,7 @@ import { GarageScene } from './scenes/garage';
 import { PlayScene } from './scenes/play';
 import { ResultsScene } from './scenes/results';
 import { EndingScene } from './scenes/ending';
+import { CampScene } from './scenes/camp';
 import { go } from './scenes/router';
 import { missionById, MISSIONS } from './game/missions';
 
@@ -25,13 +26,13 @@ async function boot() {
   Input.onFirstGesture.push(() => Audio.unlock());
   document.addEventListener('visibilitychange', () => { if (document.hidden) Audio.suspend(); else Audio.resume(); });
   Scenes.title = new TitleScene(); Scenes.intro = new IntroScene(); Scenes.map = new MapScene();
-  Scenes.garage = new GarageScene(); Scenes.play = new PlayScene(); Scenes.results = new ResultsScene(); Scenes.ending = new EndingScene();
+  Scenes.garage = new GarageScene(); Scenes.play = new PlayScene(); Scenes.results = new ResultsScene(); Scenes.ending = new EndingScene(); Scenes.camp = new CampScene();
   document.getElementById('boot')?.remove();
   // Debug/test hooks: ?play=m2 jumps straight into a mission.
   const q = new URLSearchParams(location.search);
   const m = q.get('play');
   if (m && missionById(m)) go(Scenes.play, { mission: missionById(m) }, true);
-  else if (q.get('scene') && (Scenes as any)[q.get('scene')!]) go((Scenes as any)[q.get('scene')!], undefined, true);
+  else if (q.get('scene') && (Scenes as any)[q.get('scene')!]) go((Scenes as any)[q.get('scene')!], q.get('region') ? { region: q.get('region') } : undefined, true);
   else go(Scenes.title, undefined, true);
   (window as any).__wb = { Engine, Save, Scenes, go, missionById, MISSIONS };
 }

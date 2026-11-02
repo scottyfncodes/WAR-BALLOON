@@ -71,7 +71,7 @@ export class Boss {
     if (p.hitTest(this.x, this.y - 70, 90)) p.hit(w, 1, this.x, this.y - 70, 'boss');
     // mortars from phase 2
     if (this.phase >= 2) {
-      this.mortarCd -= dt;
+      this.mortarCd -= dt * w.aggro;
       if (this.mortarCd <= 0) {
         this.mortarCd = this.phase >= 3 ? 2.0 : 3.0;
         const sx = this.x - this.dir * 50, sy = this.y - 190;
@@ -91,7 +91,7 @@ export class Boss {
     }
     // signature attack
     if (this.cfg.special && this.intro <= 0) {
-      this.specialCd -= dt;
+      this.specialCd -= dt * w.aggro;
       if (this.specialCd <= 0) { this.specialCd = Math.max(3.2, 6.5 - this.phase * 1.1); this.special(w); }
     }
     if (this.breathT > 0) {

@@ -44,7 +44,7 @@ export class PlayScene implements Scene {
     const c: Controls = { x: 0, y: 0, bomb: false, hook: false, boost: false };
     c.x = (Input.down('ArrowRight', 'KeyD') ? 1 : 0) - (Input.down('ArrowLeft', 'KeyA') ? 1 : 0);
     c.y = (Input.down('ArrowDown', 'KeyS') ? 1 : 0) - (Input.down('ArrowUp', 'KeyW', 'Space') ? 1 : 0);
-    c.bomb = Input.down('KeyB', 'KeyJ', 'KeyX');
+    c.bomb = Input.hit('KeyB', 'KeyJ', 'KeyX');
     c.hook = Input.hit('KeyH', 'KeyK', 'KeyC', 'KeyE');
     c.boost = Input.hit('ShiftLeft', 'ShiftRight', 'KeyL');
     this.touch.update(70 + Engine.safe.t);
@@ -83,7 +83,8 @@ export class PlayScene implements Scene {
     const L = 12 + Engine.safe.l, T = 10 + Engine.safe.t * 0.5;
     pen.use(ctx, 0.4);
     // ---------- gauge cluster (fuel dial + patches + bombs) ----------
-    panel(ctx, L, T, 236, 74, { color: '#3b2a20', border: 3, shadow: true });
+    const gw = 96 + Math.max(p.maxHp * 22, p.stats.bombCap * 15, 66);
+    panel(ctx, L, T, gw, 74, { color: '#3b2a20', border: 3, shadow: true });
     // fuel dial
     const gx = L + 38, gy = T + 40, gr = 28;
     pen.begin().ell(gx, gy, gr, gr).ink(P.parchment, 3);

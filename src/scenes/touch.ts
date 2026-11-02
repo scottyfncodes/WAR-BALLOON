@@ -18,10 +18,10 @@ export class TouchControls {
   buttons(): TB[] {
     const W = Engine.W, H = Engine.H, sr = Engine.safe.r, sb = Engine.safe.b;
     const b: TB[] = [
-      { id: 'bomb', x: W - 92 - sr, y: H - 92 - sb * 0.5, r: 50, label: 'BOMB', color: P.red },
-      { id: 'hook', x: W - 206 - sr, y: H - 66 - sb * 0.5, r: 40, label: 'HOOK', color: P.teal },
+      { id: 'bomb', x: W - 96 - sr, y: H - 96 - sb * 0.5, r: 58, label: 'BOMB', color: P.red },
+      { id: 'hook', x: W - 226 - sr, y: H - 70 - sb * 0.5, r: 48, label: 'HOOK', color: P.teal },
     ];
-    if (this.boostEnabled) b.push({ id: 'boost', x: W - 178 - sr, y: H - 178 - sb * 0.5, r: 32, label: 'BOOST', color: P.orange });
+    if (this.boostEnabled) b.push({ id: 'boost', x: W - 196 - sr, y: H - 196 - sb * 0.5, r: 38, label: 'BOOST', color: P.orange });
     return b;
   }
   stickHome() { return { x: 112 + Engine.safe.l, y: Engine.H - 112 - Engine.safe.b * 0.5 }; }
@@ -60,7 +60,7 @@ export class TouchControls {
   }
   merge(c: Controls) {
     if (this.stick.ptr) { c.x = this.stick.vx; c.y = this.stick.vy; }
-    c.bomb = c.bomb || !!this.held.bomb;
+    c.bomb = c.bomb || this.pressedNow.bomb;
     c.hook = c.hook || this.pressedNow.hook;
     c.boost = c.boost || this.pressedNow.boost;
   }

@@ -58,6 +58,17 @@ export class TitleScene implements Scene {
       if (started) {
         UI.button(ctx, 'intro', bxp, H * 0.5 + 126, 110, 34, 'INTRO', () => go(Scenes.intro), { style: 'ghost', size: 14 });
         UI.button(ctx, 'reset', bxp + 120, H * 0.5 + 126, 110, 34, 'NEW GAME', () => { this.confirmReset = true; }, { style: 'ghost', size: 14 });
+        UI.button(ctx, 'export', bxp, H * 0.5 + 166, 110, 34, 'SAVE CODE', () => {
+          const code = Save.exportCode();
+          try { navigator.clipboard?.writeText(code); } catch { /* ignore */ }
+          window.prompt('Your save code (copied if allowed). Keep it somewhere safe:', code);
+        }, { style: 'ghost', size: 14 });
+      }
+      {
+        UI.button(ctx, 'import', bxp + (started ? 120 : 0), H * 0.5 + (started ? 166 : 126), 110, 34, 'LOAD CODE', () => {
+          const code = window.prompt('Paste a War Balloon save code:');
+          if (code) { if (Save.importCode(code)) { Audio.buy(); Audio.setMusic(Save.data.music); Audio.setSfx(Save.data.sfx); } else { Audio.deny(); window.alert('That code didn\'t work — check it was copied in full.'); } }
+        }, { style: 'ghost', size: 14 });
       }
     } else {
       panel(ctx, lx - 170, H * 0.48, 340, 150, { tape: true });

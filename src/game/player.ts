@@ -20,7 +20,7 @@ export class Player {
   stats: Stats; levels: Record<string, number>; paint: string;
   facing = 1; tilt = 0; squash = 0; squashV = 0; wobble = 0;
   invuln = 0; dead = false; deadT = 0; grounded = false; groundT = 0;
-  bombs: number; reload = 0; bombCd = 0;
+  bombs: number; reload = 0; bombCd = 0; bombQueued = false;
   boostCd = 0; boosting = 0;
   buoyUsed = false; patchT = 0;
   // power-ups
@@ -33,6 +33,7 @@ export class Player {
   damageTaken = 0; lastHitBy = '';
   burnerOn = false; prevBurner = false;
   lookX = 1; lookY = 0;
+  inflate = 0; launched = false;
 
   constructor(x: number, y: number, stats: Stats, levels: Record<string, number>, paint: string, extraFuel = 0, extraHp = 0) {
     this.x = x; this.y = y; this.stats = stats; this.levels = levels; this.paint = paint;
@@ -64,6 +65,21 @@ export class Player {
     this.t += dt;
     const st = this.stats;
     if (this.dead) { this.updateDead(w, dt); return; }
+    if (!this.launched) {
+      // inflation / take-off moment: burner roars, the bag swells, then a little hop
+      if (this.inflate === 0) Audio.ignite();
+      this.inflate = Math.min(1, this.inflate + dt / 1.1);
+      this.burnerVis = 1; Audio.burner(0.8); this.arm = 'burn'; this.expr = 'determined';
+      this.wobble = (1 - this.inflate) * 0.8;
+      if (Math.random() < 0.3) w.fx.puff(this.x + (Math.random() - 0.5) * 30, this.y - 40, 1, P.parchment, 6);
+      if (this.inflate >= 1) {
+        this.launched = true; this.vy = -70; this.heat = 0.5; this.squashV -= 4;
+        Audio.voice('woo'); w.fx.burst(this.x + 40, this.y - 170, 'UP WE GO!', 22); w.fx.dust(this.x, this.y + 20, 8);
+        this.setExpr('happy', 1);
+      }
+      this.updateAnim(w, { x: 0, y: 0, bomb: false, hook: false, boost: false }, dt);
+      return;
+    }
     // ---------- timers ----------
     this.invuln = Math.max(0, this.invuln - dt);
     this.bombCd = Math.max(0, this.bombCd - dt);
@@ -172,7 +188,9 @@ export class Player {
   private updateBombs(w: World, c: Controls, dt: number) {
     const st = this.stats;
     if (this.bombs < st.bombCap) { this.reload += dt; if (this.reload >= st.reloadTime) { this.reload = 0; this.bombs++; Audio.ratchet(); } } else this.reload = 0;
-    if (c.bomb && this.bombCd <= 0) {
+    if (c.bomb) this.bombQueued = true;
+    if (this.bombQueued && this.bombCd <= 0) {
+      this.bombQueued = false;
       if (this.bombs > 0) {
         this.bombs--; this.bombCd = 0.22;
         const cluster = st.cluster || this.clusterT > 0;
@@ -237,16 +255,16 @@ export class Player {
     this.cargo.forEach((it, i) => { it.x = end.x; it.y = end.y + it.r + 4 + i * 12; });
     // grabbing
     if (this.hookState !== 'stowed' && this.ropeLen > 20 && this.cargo.length < st.cargoCap) {
-      const magR = st.magnet ? 80 : 0;
+      const magR = st.magnet ? 95 : 42;
       for (const it of w.items) {
         if (it.dead || it.hooked) continue;
         const d = dist(end.x, end.y, it.x, it.y);
         if (magR && d < magR && d > 4) { // magnet tug
-          const k = (1 - d / magR) * 260 * dt;
+          const k = (1 - d / magR) * (st.magnet ? 260 : 140) * dt;
           it.x += ((end.x - it.x) / d) * k; it.y += ((end.y - it.y) / d) * k; it.vy = Math.min(it.vy, 0);
-          if (Math.random() < 0.2) w.fx.sparks(it.x, it.y, 1, P.electric);
+          if (st.magnet && Math.random() < 0.2) w.fx.sparks(it.x, it.y, 1, P.electric);
         }
-        if (d < it.r + 12) {
+        if (d < it.r + 18) {
           it.hooked = true; it.floating = false; this.cargo.push(it); this.grabT = 0;
           Audio.grab(); w.fx.popup(it.x, it.y - 20, 'HOOKED!', P.parchment, 14);
           if (it.kind === 'survivor') Audio.voice('yay');
@@ -325,6 +343,7 @@ export class Player {
     w.fx.shake = Math.max(w.fx.shake, 9); w.fx.stop(0.06); w.fx.flash = 0.3;
     w.fx.puff(this.x, this.y - 90, 4, P.parchment, 7);
     Audio.hurt(); Audio.voice(this.hp <= 1 ? 'yikes' : 'ugh');
+    try { navigator.vibrate?.(70); } catch { /* unsupported */ }
     this.setExpr('hurt', 0.9);
     w.onPlayerHit();
     if (this.hp <= 0) {
@@ -347,9 +366,10 @@ export class Player {
   }
   private updateDead(w: World, dt: number) {
     this.deadT += dt;
+    this.inflate = Math.max(0.28, this.inflate - dt * 0.5);
     this.vy = Math.min(this.vy + 300 * dt, 240); this.vx *= Math.exp(-1 * dt);
     this.x += this.vx * dt; this.y += this.vy * dt;
-    this.tilt += dt * 1.5 * this.facing; this.squash = Math.min(0.3, this.squash + dt * 0.3);
+    this.tilt = Math.max(-0.55, Math.min(0.55, this.tilt + dt * 1.2 * this.facing)); this.squash = Math.min(0.3, this.squash + dt * 0.3);
     if (Math.random() < 0.5) w.fx.puff(this.x, this.y - 100, 1, P.smoke, 8);
     Audio.burner(0);
     const gy = w.terrain.surfaceY(this.x);
@@ -393,6 +413,7 @@ export class Player {
       lookX: this.lookX, lookY: this.lookY, blink: this.blink, scarf: scarfLocal, bombs: this.bombs, bombCap: this.stats.bombCap,
       propSpin: this.propSpin, boosting: this.boosting > 0, shield: this.shield, flash: this.invuln > 0 && Math.floor(this.t * 14) % 2 === 0 && !this.dead,
       goggleDown: this.boosting > 0 || this.hotairT > 0 || this.expr === 'determined', zap: this.zapT,
+      inflate: this.inflate, dizzy: this.dead || this.expr === 'hurt',
     });
     ctx.restore();
     // hot air aura

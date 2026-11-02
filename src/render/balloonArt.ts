@@ -45,6 +45,10 @@ export interface BalloonLook {
   inflate?: number; // 0 = flat on the ground, 1 = full
   dizzy?: boolean;
   ice?: number;
+  /** explicit envelope scale (airship renderer) */
+  size?: number;
+  /** stop after the envelope (airship renderer draws its own gondola) */
+  envelopeOnly?: boolean;
 }
 
 export const ENVELOPE_TOP = -228, MOUTH_Y = -92;
@@ -59,7 +63,7 @@ function envHalfWidth(hn: number, rx: number, mouth: number) {
 export function drawBalloon(ctx: CanvasRenderingContext2D, b: BalloonLook, amp = 0.7) {
   // (b may be shallow-copied below for deflated wobble)
   const L = (id: string) => b.levels[id] ?? 0;
-  const s = 1 + 0.08 * L('lift');
+  const s = b.size ?? (1 + 0.08 * L('lift'));
   const paint = paintById(b.paint);
   const f = b.facing;
   pen.use(ctx, amp);
@@ -184,6 +188,7 @@ export function drawBalloon(ctx: CanvasRenderingContext2D, b: BalloonLook, amp =
     pen.begin().m(-11, top - 6).l(11, top - 6).stroke(1.5, P.brownDark);
   }
 
+  if (b.envelopeOnly) { ctx.restore(); return; }
   // --- rigging ---
   const rimW = 26;
   const mouthY = yAt(1);
@@ -310,7 +315,7 @@ export function drawBalloon(ctx: CanvasRenderingContext2D, b: BalloonLook, amp =
   ctx.restore();
 }
 
-function drawJerry(ctx: CanvasRenderingContext2D, b: BalloonLook, f: number) {
+export function drawJerry(ctx: CanvasRenderingContext2D, b: BalloonLook, f: number) {
   ctx.save();
   ctx.scale(f, 1);
   const zap = (b.zap ?? 0) > 0 && Math.floor(b.t * 20) % 2 === 0;

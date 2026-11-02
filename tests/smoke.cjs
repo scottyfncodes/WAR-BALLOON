@@ -1,4 +1,5 @@
-// Plays through mission 1 headlessly and checks every mission boots without errors.
+// Plays the core loop headlessly: launch, get grabbed, shake free, rescue a survivor, hook loot,
+// light the beacon, fly home, check the save, buy an upgrade, reload, and boot every region.
 // Usage: node tests/smoke.cjs [baseUrl]   (default http://localhost:4173/)
 const { chromium } = require('playwright');
 const base = process.argv[2] || 'http://localhost:4173/';
@@ -9,64 +10,91 @@ const fail = (m) => { console.error('SMOKE FAIL:', m); process.exit(1); };
   const errs = [];
   p.on('pageerror', (e) => errs.push(e.message));
   p.on('console', (m) => { if (m.type() === 'error') errs.push(m.text()); });
-  const W = '__wb.Engine.scene.w';
+  const E = '__wb.Engine.scene.e';
   const ev = (js) => p.evaluate(js);
-  const open = async (url, ms) => { await p.goto(url); await p.waitForFunction(() => window.__wb && window.__wb.Engine.scene && (!location.search.includes('play') || window.__wb.Engine.scene.w), null, { timeout: 20000 }); await p.waitForTimeout(ms); };
-  // Mission 1: barricade -> supply crate -> Haven
-  await open(base + '?play=m1', 2500);
-  await ev(`(()=>{const w=${W};w.player.x=880;w.player.y=330;w.player.vx=0;w.player.vy=0;})()`);
-  for (let i = 0; i < 4; i++) { await p.keyboard.press('KeyB'); await p.waitForTimeout(700); }
-  if (!(await ev(`${W}.objectives[0].done`))) fail('barricade not destroyed');
-  await ev(`(()=>{const w=${W};const b=w.terrain.buildings.find(b=>1505>=b.x&&1505<=b.x+b.w);w.player.x=1505;w.player.y=b.top-100;w.player.vx=0;w.player.vy=0;})()`);
-  await p.keyboard.press('KeyH'); await p.waitForTimeout(3500);
-  if (!(await ev(`${W}.objectives[1].done`))) fail('supply crate not retrieved');
-  await ev(`(()=>{const w=${W};w.player.x=w.exitX-40;w.player.y=360;})()`);
-  await p.waitForTimeout(500);
-  if ((await ev(`${W}.state`)) !== 'complete') fail('mission did not complete');
+  const open = async (q, ms) => { await p.goto(base + q); await p.waitForFunction(() => window.__wb && window.__wb.Engine.scene && (!location.search.includes('play') || window.__wb.Engine.scene.e), null, { timeout: 20000 }); await p.waitForTimeout(ms); };
+  /** Pin the balloon at a spot for a while (the test plays the pilot). */
+  const hover = async (js, ms) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { await ev(`(()=>{const e=${E};const s=e.ship;${js};s.vx=0;s.vy=0;})()`); await p.waitForTimeout(100); } };
+
+  // fresh save
+  await open('?scene=title', 500);
+  await ev(`localStorage.clear(); __wb.Save.reset()`);
+  await open('?play=suburbs&seed=3', 2500);
+  if (!(await ev(`${E}.ship.launched`))) fail('balloon did not take off');
+  if ((await ev(`${E}.zombies.length`)) < 20) fail('too few zombies spawned');
+
+  // 1. zombies grab the basket when it flies low over a horde, and SHAKE throws them off
+  await hover(`const z=e.zombies.find(z=>!z.bld&&!z.dead&&z.x>700);s.x=z.x;s.y=e.terrain.groundY(z.x)-s.g.bottom*0.8-12;e.outbound=true`, 3000);
+  const grabbed = await ev(`${E}.ship.hangers.length + ${E}.ship.boarders.length`);
+  if (grabbed < 1) fail('no zombie grabbed the low basket');
+  const hy = await ev(`${E}.ship.y - 280`);
+  for (let i = 0; i < 4; i++) { await p.keyboard.press('KeyX'); await hover(`s.y=${hy}`, 1500); }
+  if ((await ev(`${E}.ship.hangers.length`)) > 0) fail('shaking did not clear hangers');
+  if ((await ev(`${E}.shaken + ${E}.kills`)) < 1) fail('shake removed nobody');
+
+  // 2. rescue a survivor by hovering low over their roof
+  await ev(`(()=>{const e=${E};const v=e.survivors[0];e.zombies=e.zombies.filter(z=>Math.abs(z.x-v.x)>300);})()`);
+  await hover(`const v=e.survivors[0];s.x=v.x;s.y=v.y-s.g.bottom*0.8-40`, 3500);
+  if ((await ev(`${E}.rescued.length`)) < 1) fail('survivor not rescued');
+  if ((await ev(`${E}.ship.crew.length`)) !== 1) fail('rescued survivor not aboard');
+
+  // 3. hook some loot
+  const lootX = await ev(`(()=>{const e=${E};const it=e.loot.find(l=>l.kind!=='trophy'&&l.x>600);e.zombies=e.zombies.filter(z=>Math.abs(z.x-it.x)>250);return it.x})()`);
+  const lootY = await ev(`${E}.loot.find(l=>Math.abs(l.x-${lootX})<2).y`);
+  await hover(`s.x=${lootX};s.y=${lootY}-130`, 400);
+  await p.keyboard.press('KeyH');
+  await hover(`s.x=${lootX};s.y=${lootY}-130`, 3500);
+  const carried = await ev(`Object.values(${E}.cargo).reduce((a,b)=>a+b,0)`);
+  if (carried < 1) fail('hook brought nothing back ' + (await ev(`JSON.stringify({st:${E}.ship.hookState,len:${E}.ship.ropeLen|0,dead:${E}.ship.dead,state:${E}.state,ly:${lootY},end:[${E}.ship.rope[9].x|0,${E}.ship.rope[9].y|0],it:${E}.loot.filter(l=>Math.abs(l.x-${lootX})<40).map(l=>[l.x|0,l.y|0,l.hooked,l.dead]),sy:${E}.ship.y|0,h:${E}.ship.hangers.length})`)));
+
+  // 4. light the beacon
+  await ev(`(()=>{const e=${E};const b=e.beacon;e.zombies=e.zombies.filter(z=>Math.abs(z.x-b.x)>400);})()`);
+  await hover(`const b=e.beacon;s.x=b.x+b.w/2;s.y=b.top-140`, 2500);
+  if (!(await ev(`${E}.beaconLit`))) fail('beacon not lit');
+  if (!(await ev(`__wb.Save.data.regions.suburbs.beacon`))) fail('beacon not saved');
+
+  // 5. fly home -> report -> save
+  await hover(`const h=e.haven;s.x=h.x+h.w/2;s.y=h.top-s.g.bottom*0.8-4;s.hangers.length=0`, 1500);
+  if ((await ev(`${E}.state`)) !== 'home') fail('did not land at Haven');
   await p.waitForTimeout(3500);
-  if (!(await ev(`!!__wb.Save.data.missions.m1?.done`))) fail('progress not saved');
-  // Every mission boots and runs
-  const all = await ev(`__wb.MISSIONS.map(m=>m.id)`);
-  if (all.length < 19) fail('expected 19 missions, got ' + all.length);
-  for (const m of all) {
-    await open(base + '?play=' + m, 1600);
-    if ((await ev(`${W}.state`)) !== 'play') fail(m + ' not running');
+  const sv = await ev(`JSON.stringify({crew:__wb.Save.data.crew.length,scrap:__wb.Save.data.res.scrap,exp:__wb.Save.data.stats.expeditions,scene:!!__wb.Engine.scene.r})`);
+  const o = JSON.parse(sv);
+  if (!o.scene) fail('report scene not shown');
+  if (o.crew !== 1) fail('rescued survivor did not join the roster');
+  if (o.exp !== 1) fail('expedition not recorded');
+
+  // 6. upgrade the basket: more seats, visibly bigger
+  await open('?scene=workshop', 800);
+  await ev(`(()=>{const s=__wb.Save.data;s.res.scrap=200;s.res.fabric=50;s.res.parts=20;})()`);
+  await ev(`(()=>{const sc=__wb.Engine.scene;sc.buy(__wb.UPGRADES.find(u=>u.id==='basket'));sc.buy(__wb.UPGRADES.find(u=>u.id==='gun'));})()`);
+  if ((await ev(`__wb.computeStats(__wb.Save.data.levels).seats`)) !== 2) fail('basket upgrade did not add seats');
+
+  // 7. crew aboard + reload keeps everything
+  await open('?scene=crew', 600);
+  await ev(`(()=>{const sc=__wb.Engine.scene;const c=__wb.Save.data.crew[0];if(!__wb.Save.data.aboard.includes(c.id))sc.toggle(c);})()`);
+  await open('?scene=haven', 800);
+  const after = await ev(`JSON.stringify({crew:__wb.Save.data.crew.length,aboard:__wb.Save.data.aboard.length,basket:__wb.Save.data.levels.basket,beacon:__wb.Save.data.regions.suburbs.beacon})`);
+  const a = JSON.parse(after);
+  if (a.crew !== 1 || a.aboard !== 1 || a.basket !== 1 || !a.beacon) fail('save did not survive reload: ' + after);
+
+  // 8. crew fly along and the mounted gun shoots
+  await open('?play=town&seed=9', 2500);
+  if ((await ev(`${E}.ship.crew.length`)) !== 1) fail('crew not aboard on launch');
+  await hover(`const z=e.zombies.find(z=>!z.dead&&z.x>900);s.x=z.x;s.y=z.y-260`, 3000);
+  if ((await ev(`${E}.tracers.length + ${E}.kills`)) < 1 && (await ev(`${E}.ship.gunCd`)) <= 0) fail('mounted gun never fired');
+
+  // 9. a crash keeps 30% and the expedition still settles
+  await ev(`(()=>{const e=${E};e.cargo.scrap=10;e.ship.crash(e,'bail');})()`);
+  await p.waitForTimeout(4200);
+  if (!(await ev(`!!__wb.Engine.scene.r && __wb.Engine.scene.r.success===false`))) fail('crash did not produce a report');
+
+  // 10. every region boots and runs
+  for (const r of ['suburbs', 'town', 'industrial', 'downtown', 'military', 'deadzone']) {
+    await open('?play=' + r, 1500);
+    if ((await ev(`${E}.state`)) !== 'play') fail(r + ' not running');
   }
-  // Every boss can be beaten: blow all valves, wait for the wreck, objective completes
-  for (const m of ['m4', 'd3', 'f3', 'g3', 'z3', 'a3']) {
-    await open(base + '?play=' + m, 1500);
-    await ev(`(()=>{const w=${W};const b=w.boss;w.player.x=b.arenaX+200;w.player.y=200;})()`);
-    await p.waitForTimeout(700);
-    // hit each weak point the way the boss demands: hook pods, crack ice, wait for vents
-    for (let k = 0; k < 28; k++) {
-      await ev(`(()=>{const w=${W};const b=w.boss;b.intro=0;if(b.dying>0)return;for(const v of b.valves){if(v.hp<=0)continue;const q=b.valvePos(v);v.flash=0;if(b.cfg.weak==='pods')b.hookHit(w,q.x,q.y,300);else w.explode(q.x,q.y,1);} })()`);
-      await p.waitForTimeout(300);
-    }
-    await p.waitForTimeout(3500);
-    if (!(await ev(`${W}.bossDown`))) fail(m + ' boss not defeated');
-  }
-  // Region mechanics: flood dunk soaks, frozen altitude ices, lava burns
-  await open(base + '?play=f1', 2000);
-  await ev(`(()=>{const w=${W};const g=w.terrain.buildings;let x=900;while(g.some(b=>x>b.x-60&&x<b.x+b.w+60))x+=40;w.player.x=x;w.player.y=470;w.player.invuln=0;})()`);
-  await p.keyboard.down('ArrowDown'); await p.waitForTimeout(3500); await p.keyboard.up('ArrowDown');
-  if ((await ev(`${W}.player.damageTaken`)) < 1) fail('flood water did not soak');
-  await open(base + '?play=z1', 2000);
-  await ev(`(()=>{const w=${W};w.player.y=170;})()`); await p.keyboard.down('ArrowUp'); await p.waitForTimeout(2500); await p.keyboard.up('ArrowUp');
-  if ((await ev(`${W}.player.ice`)) < 0.2) fail('frozen icing did not build');
-  await open(base + '?play=a1', 2000);
-  await ev(`(()=>{const w=${W};const [a,l]=w.terrain.lava[0];w.player.x=a+l/2;w.player.y=w.terrain.groundY(a+l/2)-30;w.player.vy=100;w.player.invuln=0;})()`); await p.waitForTimeout(800);
-  if ((await ev(`${W}.player.damageTaken`)) < 1) fail('lava did not burn');
-  // Camps: deliver all three Haven requests -> perk active (+1 bomb capacity)
-  await open(base + '?scene=title', 500);
-  await ev(`(()=>{const s=__wb.Save.data;s.res={fuel:50,scrap:80,fabric:40,food:10,water:10,electronics:10};s.camps={};__wb.Save.write();__wb.go(__wb.Scenes.camp,{region:'city'});})()`);
-  await p.waitForTimeout(800);
-  for (let i = 0; i < 3; i++) { await ev(`__wb.Engine.scene.fulfil()`); }
-  if ((await ev(`__wb.Save.data.camps.city`)) !== 3) fail('camp requests not fulfilled');
-  if (!(await ev(`__wb.Save.perks().includes('workshop')`))) fail('camp perk not granted');
-  await open(base + '?play=m2', 600);
-  if ((await ev(`${W}.player.stats.bombCap`)) !== 4) fail('workshop perk not applied to bombs');
-  // Menus render
-  for (const s of ['title', 'map', 'garage', 'ending', 'camp', 'scrapbook']) { await open(base + '?scene=' + s, 1200); }
+  // menus render
+  for (const s of ['title', 'intro', 'haven', 'workshop', 'crew', 'ending']) await open('?scene=' + s, 900);
   await b.close();
   if (errs.length) fail('page errors:\n' + errs.join('\n'));
   console.log('SMOKE OK');

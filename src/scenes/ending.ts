@@ -12,11 +12,12 @@ import { drawMenuBalloon, intertitle } from './common';
 import { PAINTS } from '../render/balloonArt';
 import { Save } from '../core/save';
 import { BIOMES } from '../game/biomes';
+import { drawMenuAirship } from './common';
 
 const CARDS = [
-  ['The Iron Furnace went cold.'],
-  ['One by one, the camps lit their lamps:', 'the Caravan, the Ferry Raft, the Greenhouse, the Station.'],
-  ['The skies belonged to the balloonists again.'],
+  ['The last beacon blazed over the Dead Zone.'],
+  ['One by one, survivors everywhere looked up', 'and saw a flying fortress full of friends.'],
+  ['The ground still belongs to the dead. The sky belongs to us.'],
   ['And Jerry?'],
 ];
 
@@ -24,13 +25,13 @@ const CARDS = [
 export class EndingScene implements Scene {
   t = 0;
   enter() { this.t = 0; Audio.playSong('haven'); Audio.fanfare(); }
-  update(dt: number) { this.t += dt; UI.update(); if (this.t > 2 && (Input.hit('Enter', 'Space') || Input.downs.some((d) => !d.claimed)) && this.t > 15) go(Scenes.map); }
+  update(dt: number) { this.t += dt; UI.update(); if (this.t > 2 && (Input.hit('Enter', 'Space') || Input.downs.some((d) => !d.claimed)) && this.t > 15) go(Scenes.haven); }
   render(ctx: CanvasRenderingContext2D) {
     UI.begin();
     const W = Engine.W, H = Engine.H, t = this.t;
-    drawBackdrop(ctx, W, H, t * 40, -60, t, { biome: BIOMES.city });
+    drawBackdrop(ctx, W, H, t * 40, -60, t, { biome: BIOMES.downtown });
     // a whole flotilla of balloons in every paint Jerry earned
-    const owned = PAINTS.filter((p) => Save.data.paintsUnlocked.includes(p.id));
+    const owned = PAINTS.filter((p) => Save.data.owned.includes(p.id));
     owned.forEach((p, i) => {
       const k = easeOutCubic(clamp((t - 1 - i * 0.6) / 4, 0, 1));
       const x = W * (0.1 + (i % 5) * 0.2) + Math.sin(t * 0.5 + i) * 20;
@@ -38,7 +39,7 @@ export class EndingScene implements Scene {
       drawMenuBalloon(ctx, x, y, 0.35 + (i % 2) * 0.08, t + i, { paint: p.id, burner: Math.sin(t * 2 + i) > 0.3 ? 1 : 0 });
     });
     // Jerry front and centre
-    drawMenuBalloon(ctx, W / 2, H * 0.84 - Math.min(1, t / 6) * 60 + Math.sin(t) * 6, 0.9, t, { expr: 'cheer', arm: t % 4 < 2 ? 'wave' : 'cheer', burner: 1, goggleDown: true });
+    drawMenuAirship(ctx, W / 2, H * 0.8 - Math.min(1, t / 6) * 60 + Math.sin(t) * 6, 0.8, t, { expr: 'cheer', arm: t % 4 < 2 ? 'wave' : 'cheer', burner: 1, goggleDown: true });
     drawPost(ctx, W, H, t);
     const idx = Math.min(CARDS.length, Math.floor(t / 3.2));
     if (idx < CARDS.length) {
@@ -52,6 +53,6 @@ export class EndingScene implements Scene {
       ctx.globalAlpha = 1;
       if (t > 15) bodyText(ctx, 'tap to keep flying', W / 2, H - 20, 16, 'rgba(241,223,184,0.8)', 'center');
     }
-    UI.button(ctx, 'skip', W - 120 - Engine.safe.r, 14, 100, 36, 'MAP ►', () => go(Scenes.map), { style: 'ghost', size: 15, keys: ['Escape'] });
+    UI.button(ctx, 'skip', W - 120 - Engine.safe.r, 14, 100, 36, 'HAVEN ►', () => go(Scenes.haven), { style: 'ghost', size: 15, keys: ['Escape'] });
   }
 }

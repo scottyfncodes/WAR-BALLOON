@@ -10,25 +10,22 @@ import { UI } from './ui';
 import { go } from './router';
 import { Scenes } from './registry';
 import { drawMenuBalloon, intertitle } from './common';
-import { missionById } from '../game/missions';
-import { Enemy } from '../game/entities';
+import { drawZombie } from '../render/zombieArt';
 
 /** Storybook intro: silent-film intertitles + animated vignettes. */
 const BEATS = [
-  { dur: 4.2, card: ['The world has fallen apart.'] },
-  { dur: 4.6, card: ['Cities emptied. Supplies vanished.', 'And the scrap machines kept on marching.'] },
-  { dur: 4.4, card: ['Humanity\'s future now rests', 'in the hands of one man…'] },
+  { dur: 4.2, card: ['Humanity has lost the ground.'] },
+  { dur: 4.6, card: ['The dead fill every street and rooftop.', 'And they never, ever stop reaching up.'] },
+  { dur: 4.4, card: ['The sky is the last safe place.', 'One man still flies it…'] },
   { dur: 5.2, card: ['JERRY.'] },
 ];
 
 export class IntroScene implements Scene {
   t = 0; beat = 0; bt = 0; done = false;
-  buzz: Enemy[] = [];
-  enter() { this.t = 0; this.beat = 0; this.bt = 0; this.done = false; Audio.playSong('haven'); this.buzz = [0, 1, 2].map((i) => { const e = new Enemy(0, 0, 'buzzard'); e.t = i; e.facing = 1; return e; }); }
+    enter() { this.t = 0; this.beat = 0; this.bt = 0; this.done = false; Audio.playSong('haven'); }
   update(dt: number) {
     UI.update();
     this.t += dt; this.bt += dt;
-    for (const e of this.buzz) e.t += dt;
     const skip = Input.downs.some((d) => !d.claimed) || Input.hit('Space', 'Enter', 'ArrowRight');
     if (skip && this.bt > 0.5) this.next();
     if (this.bt > BEATS[this.beat].dur) this.next();
@@ -42,8 +39,8 @@ export class IntroScene implements Scene {
   finish() {
     if (this.done) return; this.done = true;
     Save.data.seenIntro = true; Save.write();
-    const firstTime = !Save.data.missions.m1?.done;
-    go(firstTime ? Scenes.play : Scenes.map, firstTime ? { mission: missionById('m1') } : undefined);
+    const firstTime = Save.data.stats.expeditions === 0;
+    go(firstTime ? Scenes.play : Scenes.haven, firstTime ? { region: 'suburbs' } : undefined);
   }
   render(ctx: CanvasRenderingContext2D) {
     UI.begin();
@@ -58,12 +55,8 @@ export class IntroScene implements Scene {
       for (let i = 0; i < 18; i++) { const x = (i * 97 + bt * 30) % W, y = (i * 53 + bt * 50) % H; ctx.fillStyle = i % 3 ? 'rgba(42,26,20,0.5)' : 'rgba(255,181,52,0.6)'; ctx.fillRect(x, y, 3, 3); }
     } else if (this.beat === 1) {
       drawBackdrop(ctx, W, H, 1400 + bt * 40, -60, this.t);
-      // marching machine silhouette & buzzards
-      ctx.save(); ctx.translate(W * 0.7 - bt * 20, H * 0.86); ctx.fillStyle = 'rgba(42,26,20,0.85)';
-      ctx.beginPath(); ctx.roundRect?.(-120, -50, 240, 50, 20); ctx.fill(); ctx.fillRect(-90, -130, 180, 82); ctx.fillRect(-10, -190, 60, 60);
-      ctx.save(); ctx.rotate(-0.5); ctx.fillRect(0, -330, 18, 200); ctx.restore();
-      ctx.restore();
-      this.buzz.forEach((e, i) => { e.x = W * 0.2 + i * 90 + bt * 60; e.y = H * 0.3 + Math.sin(bt * 2 + i) * 20 + i * 30; e.draw(ctx, {} as any); });
+      // a horde shambling below
+      for (let i = 0; i < 14; i++) { ctx.save(); ctx.translate(((i * 83 + bt * 25) % (W + 100)) - 50, H * 0.88 + (i % 3) * 6); ctx.scale(1.6, 1.6); drawZombie(ctx, { kind: i % 5 === 0 ? 'brute' : i % 3 === 0 ? 'swarmer' : 'walker', pose: i % 2 ? 'reach' : 'walk', t: this.t + i, facing: 1, seed: i * 11 }); ctx.restore(); }
     } else {
       drawBackdrop(ctx, W, H, 2200 + bt * 6, -20, this.t);
       if (this.beat === 2) {
@@ -99,7 +92,7 @@ export class IntroScene implements Scene {
     if (this.beat === 3 && bt > 2.4) {
       const a = clamp((bt - 2.4) / 0.6, 0, 1);
       ctx.globalAlpha = a;
-      bodyText(ctx, '…and his beat-up hot air balloon.', W / 2, H * 0.18, 26, P.parchment, 'center');
+      bodyText(ctx, '…in a very small hot air balloon.', W / 2, H * 0.18, 26, P.parchment, 'center');
       ctx.globalAlpha = 1;
     }
     UI.button(ctx, 'skip', W - 120 - Engine.safe.r, 44, 100, 36, 'SKIP ►', () => this.finish(), { style: 'ghost', size: 15, keys: ['Escape'] });

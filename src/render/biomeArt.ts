@@ -8,9 +8,9 @@ type Kind = 'far' | 'mid' | 'near';
 
 /** Tileable parallax strip for any biome. Ground line at the bottom (H). */
 export function paintBiomeLayer(b: Biome, kind: Kind, W: number, H: number, seed: number): HTMLCanvasElement {
-  if (b.id === 'city') return paintCityLayer({ W, H, seed, kind });
+  if (b.art === 'city') return paintCityLayer({ W, H, seed, kind });
   const [c, x] = makeCanvas(W, H);
-  const rng = new RNG(seed + b.id.length * 101);
+  const rng = new RNG(seed + b.art.length * 101);
   pen.use(x, 0);
   // wraps any element horizontally so the strip tiles seamlessly
   const wrap = (bx: number, bw: number, fn: (ox: number) => void) => { fn(bx); if (bx + bw > W) fn(bx - W); if (bx < 0) fn(bx + W); };
@@ -36,7 +36,7 @@ export function paintBiomeLayer(b: Biome, kind: Kind, W: number, H: number, seed
     x.globalCompositeOperation = 'source-atop'; x.fillStyle = g; x.fillRect(0, 0, W, H); x.globalCompositeOperation = 'source-over';
   };
 
-  switch (b.id) {
+  switch (b.art) {
     // ------------------------------------------------------------ DUSTLANDS
     case 'dust': {
       if (kind === 'far') {

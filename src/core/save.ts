@@ -1,68 +1,87 @@
-import type { ResKey } from '../game/upgrades';
+import type { ResKey } from '../game/resources';
+import type { CrewMember } from '../game/crew';
+import type { BiomeId } from '../game/biomes';
+import type { DecorSlot } from '../game/cosmetics';
 
-export interface MissionRecord { done: boolean; stars: number; best: number; }
+export interface RegionRecord { beacon: boolean; runs: number; best: number; }
 export interface SaveData {
   v: number;
   res: Record<ResKey, number>;
   levels: Record<string, number>;
-  missions: Record<string, MissionRecord>;
-  postcards: string[];
-  paint: string;
-  paintsUnlocked: string[];
-  seenIntro: boolean;
-  music: boolean; sfx: boolean;
-  provisions: boolean;
-  totalRuns: number;
-  population: number;
-  seenRegions: string[];
-  fails: Record<string, number>;
-  camps: Record<string, number>;
+  crew: CrewMember[];
+  aboard: string[];
+  regions: Partial<Record<BiomeId, RegionRecord>>;
+  region: BiomeId;
+  /** crew lost when the balloon went down; they can be found again in that region */
+  missing: Record<string, BiomeId>;
+  decor: Record<DecorSlot, string>;
+  owned: string[];
+  trophies: string[];
+  seenIntro: boolean; seenTutorial: boolean;
+  music: boolean; sfx: boolean; lefty: boolean;
   difficulty: 'relaxed' | 'normal' | 'hard';
+  stats: { expeditions: number; zombies: number; rescued: number; shaken: number; crashes: number; maxHangers: number; };
   ach: string[];
-  lefty: boolean;
-  flags: Record<string, boolean>;
-  stats: { bombs: number; destroyed: number; hooked: number; };
+  veteran?: boolean;
 }
 
-const KEY = 'warballoon.save.v1';
-const PERK_OF: Record<string, string> = { city: 'workshop', dust: 'fuelrich', flood: 'longrope', green: 'herbal', frozen: 'lab', ash: 'forge' };
+const KEY = 'warballoon.save.v2';
+const OLD_KEY = 'warballoon.save.v1';
 
 export function freshSave(): SaveData {
   return {
-    v: 1,
-    res: { fuel: 0, scrap: 0, fabric: 0, food: 1, water: 1, electronics: 0 },
-    levels: {}, missions: {}, postcards: [], paint: 'classic', paintsUnlocked: ['classic'],
-    seenIntro: false, music: true, sfx: true, provisions: false, totalRuns: 0, population: 0, seenRegions: ['city'], fails: {}, camps: {}, difficulty: 'normal', ach: [], flags: {}, lefty: false,
-    stats: { bombs: 0, destroyed: 0, hooked: 0 },
+    v: 2,
+    res: { scrap: 10, fabric: 4, parts: 0, tech: 0, fuel: 4, food: 6, meds: 2 },
+    levels: {}, crew: [], aboard: [], regions: { suburbs: { beacon: false, runs: 0, best: 0 } }, region: 'suburbs', missing: {},
+    decor: { paint: 'classic', material: 'wicker', flag: 'noflag', lights: 'nolights', furniture: 'nofurn' },
+    owned: ['classic', 'wicker', 'noflag', 'nolights', 'nofurn'], trophies: [],
+    seenIntro: false, seenTutorial: false, music: true, sfx: true, lefty: false, difficulty: 'normal',
+    stats: { expeditions: 0, zombies: 0, rescued: 0, shaken: 0, crashes: 0, maxHangers: 0 }, ach: [],
   };
+}
+
+function merge(d: any): SaveData {
+  const f = freshSave();
+  return { ...f, ...d, res: { ...f.res, ...(d.res || {}) }, stats: { ...f.stats, ...(d.stats || {}) }, decor: { ...f.decor, ...(d.decor || {}) }, regions: { ...f.regions, ...(d.regions || {}) } };
+}
+
+/** Pilots from the old machine-war version keep a care package. */
+function migrate(old: any): SaveData {
+  const s = freshSave();
+  const r = old?.res || {};
+  s.res.scrap += Math.min(60, r.scrap | 0); s.res.fabric += Math.min(30, r.fabric | 0); s.res.fuel += Math.min(20, r.fuel | 0);
+  s.res.food += Math.min(10, r.food | 0); s.res.meds += Math.min(6, r.water | 0); s.res.tech += Math.min(6, r.electronics | 0);
+  for (const p of (old?.paintsUnlocked || []) as string[]) if (!s.owned.includes(p)) s.owned.push(p);
+  s.music = old?.music ?? true; s.sfx = old?.sfx ?? true; s.lefty = !!old?.lefty; s.veteran = true;
+  return s;
 }
 
 function load(): SaveData {
   try {
     const raw = localStorage.getItem(KEY);
-    if (!raw) return freshSave();
-    const d = JSON.parse(raw);
-    const f = freshSave();
-    return { ...f, ...d, res: { ...f.res, ...(d.res || {}) }, stats: { ...f.stats, ...(d.stats || {}) } };
-  } catch { return freshSave(); }
+    if (raw) return merge(JSON.parse(raw));
+    const old = localStorage.getItem(OLD_KEY);
+    if (old) return migrate(JSON.parse(old));
+  } catch { /* corrupted or blocked storage: start fresh */ }
+  return freshSave();
 }
 
 export const Save = {
   data: load(),
-  /** Permanent perks earned by completing every request at a camp. */
-  perks(): string[] { return Object.entries(PERK_OF).filter(([c]) => (this.data.camps[c] ?? 0) >= 3).map(([, p]) => p); },
   write() { try { localStorage.setItem(KEY, JSON.stringify(this.data)); } catch { /* storage blocked: progress lives for this session */ } },
   reset() { this.data = freshSave(); this.write(); },
-  /** Portable save code (survives clearing Safari data if you keep the code). */
-  exportCode(): string { return 'WB1.' + btoa(unescape(encodeURIComponent(JSON.stringify(this.data)))); },
+  reload() { this.data = load(); },
+  exportCode(): string { return 'WB2.' + btoa(unescape(encodeURIComponent(JSON.stringify(this.data)))); },
   importCode(code: string): boolean {
     try {
-      const c = code.trim(); if (!c.startsWith('WB1.')) return false;
+      const c = code.trim(); if (!c.startsWith('WB2.')) return false;
       const d = JSON.parse(decodeURIComponent(escape(atob(c.slice(4)))));
       if (!d || typeof d !== 'object' || !d.res) return false;
-      const f = freshSave();
-      this.data = { ...f, ...d, res: { ...f.res, ...d.res }, stats: { ...f.stats, ...(d.stats || {}) } };
-      this.write(); return true;
+      this.data = merge(d); this.write(); return true;
     } catch { return false; }
   },
+  crewById(id: string) { return this.data.crew.find((c) => c.id === id); },
+  aboardCrew() { return this.data.aboard.map((id) => this.crewById(id)).filter((c): c is CrewMember => !!c && c.injured <= 0); },
+  regionUnlocked(i: number, order: string[]) { if (i === 0) return true; const prev = this.data.regions[order[i - 1] as BiomeId]; return !!prev?.beacon; },
+  comfort() { return this.data.owned.filter((id) => !id.startsWith('no') && !['classic', 'wicker'].includes(id)).length + this.data.trophies.length; },
 };

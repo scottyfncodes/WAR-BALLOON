@@ -23,8 +23,8 @@ function ensure(b: Biome, W: number, H: number): BiomeCache {
   if (!clouds) {
     const rng = new RNG(77 + b.id.length);
     clouds = [];
-    const n = b.id === 'flood' || b.id === 'ash' ? 6 : 4;
-    for (let i = 0; i < n; i++) clouds.push({ c: cloudSprite(rng.range(45, b.id === 'flood' ? 110 : 80), b.sky, i * 31 + 7), x: i * 450 + rng.range(0, 200), y: rng.range(-10, 110), speed: rng.range(4, 12), f: rng.range(0.03, 0.08) });
+    const n = b.art === 'flood' || b.art === 'ash' ? 6 : 4;
+    for (let i = 0; i < n; i++) clouds.push({ c: cloudSprite(rng.range(45, b.art === 'flood' ? 110 : 80), b.sky, i * 31 + 7), x: i * 450 + rng.range(0, 200), y: rng.range(-10, 110), speed: rng.range(4, 12), f: rng.range(0.03, 0.08) });
   }
   c = { W, sky: paintSky(W, H, b.sky, 3 + b.id.length), layers, clouds };
   caches.set(b.id, c);
@@ -33,7 +33,7 @@ function ensure(b: Biome, W: number, H: number): BiomeCache {
 
 /** Painted parallax backdrop. camX/camY are world camera offsets. */
 export function drawBackdrop(ctx: CanvasRenderingContext2D, W: number, H: number, camX: number, camY: number, t: number, opts: { layers?: number; biome?: Biome } = {}) {
-  const b = opts.biome ?? BIOMES.city;
+  const b = opts.biome ?? BIOMES.suburbs;
   const c = ensure(b, W, H);
   ctx.drawImage(c.sky, 0, Math.max(-40, Math.min(0, -camY * 0.02 - 20)), W, H + 40);
   const span = W + 700;

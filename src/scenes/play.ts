@@ -36,7 +36,7 @@ export class PlayScene implements Scene {
     this.touch = new TouchControls(); this.touch.visible = Engine.isTouch || Input.usingTouch; this.touch.lefty = s.lefty;
     this.paused = false; this.t = 0; this.ended = false; this.confirmBail = false;
     Audio.playSong(this.e.region.music);
-    this.e.banner(this.e.region.name.toUpperCase(), this.e.beaconWasLit ? 'Scavenge, rescue — and get home alive' : 'Light the BEACON at the far end · then get home', P.parchment);
+    this.e.banner(this.e.region.name.toUpperCase(), this.e.beaconWasLit ? 'Scavenge, rescue — and get home alive' : 'Light the BEACON at the far end · bring the signal home', P.parchment);
   }
   exit() { Audio.burner(0); Audio.wind(0); }
   onBlur() { if (!this.ended) this.paused = true; Audio.burner(0); }
@@ -128,7 +128,7 @@ export class PlayScene implements Scene {
     ctx.fillStyle = 'rgba(42,26,20,0.12)'; ctx.fillRect(toX(s.x - e.reveal), my + 6, Math.min(mw - 20, (e.reveal * 2 / e.length) * (mw - 20)), 20);
     const pip = (x: number, col: string, r = 4) => { pen.begin().ell(toX(x), my + 16, r, r).ink(col, 1.5); };
     pip(e.haven.x + e.haven.w / 2, P.teal, 5); pip(e.outpost.x + e.outpost.w / 2, P.tealLight, 4.5);
-    pip(e.beacon.x + e.beacon.w / 2, e.beaconLit || e.beaconWasLit ? P.goldLight : P.redDark, 5);
+    pip(e.beacon.x + e.beacon.w / 2, e.beaconBanked || e.beaconWasLit ? P.goldLight : e.beaconLit ? P.orangeLight : P.redDark, 5);
     for (const v of e.survivors) if ((v.state === 'wait' || v.state === 'climb') && e.revealed(v.x)) { ctx.fillStyle = P.gold; ctx.fillRect(toX(v.x) - 2, my + 5, 4, 7); }
     for (const it of e.loot) if (it.kind === 'trophy' && e.revealed(it.x)) { ctx.fillStyle = P.electric; ctx.beginPath(); ctx.arc(toX(it.x), my + 24, 2.5, 0, 7); ctx.fill(); }
     ctx.save(); ctx.translate(toX(s.x), my + 15); pen.begin().ell(0, -3, 5, 6).ink(P.orange, 1.5); pen.begin().rect(-2.5, 3, 5, 4).ink(P.brown, 1); ctx.restore();

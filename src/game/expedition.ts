@@ -80,8 +80,11 @@ export class Expedition {
   camX = 0; camY = 0; viewW = 960; viewH = 540; time = 0;
   banners: Banner[] = []; tip: { tip: Tip; t: number } | null = null; tipsShown = new Set<string>(); tutorial: boolean;
   aggro = 1; zSpeed = 1; spawnT = 6; kills = 0; maxHangers = 0; shaken = 0; outbound = false; refueled = false;
-  outpostT = 0; homeT = 0; beaconT = 0; beaconLit = false; beaconWasLit: boolean; fullNagT = 0;
+  outpostT = 0; homeT = 0; beaconT = 0; beaconLit = false; beaconBanked = false; beaconWasLit: boolean; fullNagT = 0;
   rng: RNG; reveal = 600; cap = 70; distMax = 0; foodUsed = 0;
+  /** only one ranged attack in the air at a time, so every shot is readable and dodgeable */
+  rangedCd = 0;
+  canRanged() { if (this.rangedCd > 0) return false; this.rangedCd = 2.6 - this.region.danger * 0.25; return true; }
 
   constructor(regionId: BiomeId, seed = Math.floor(Math.random() * 1e9)) {
     const s = Save.data;
@@ -90,7 +93,7 @@ export class Expedition {
     this.length = this.region.length;
     this.tutorial = !s.seenTutorial;
     this.aggro = s.difficulty === 'relaxed' ? 0.65 : s.difficulty === 'hard' ? 1.3 : 1;
-    this.zSpeed = s.difficulty === 'relaxed' ? 0.85 : s.difficulty === 'hard' ? 1.12 : 1;
+    this.zSpeed = (s.difficulty === 'relaxed' ? 0.85 : s.difficulty === 'hard' ? 1.12 : 1) * (0.97 + 0.03 * this.region.danger);
     this.beaconWasLit = !!s.regions[regionId]?.beacon;
     const specs = this.generate();
     this.terrain = new Terrain(this.length, seed % 9973, specs, this.region);
@@ -102,6 +105,7 @@ export class Expedition {
     this.ship = new Airship(hx, 0, stats, s.levels, s.decor, s.trophies, crew, hpBonus);
     this.ship.y = this.haven.top - this.ship.g.bottom * S;
     this.populate();
+    for (const z of this.zombies) this.toughen(z);
     this.cap = Math.round((50 + this.region.danger * 8) * (s.difficulty === 'hard' ? 1.2 : 1));
     this.camX = Math.max(0, hx - 400);
     this.updateReveal();
@@ -138,6 +142,15 @@ export class Expedition {
     for (const [kind, w] of Object.entries(z)) { k -= w ?? 0; if (k <= 0) return kind as ZKind; }
     return 'walker';
   }
+  /** deeper regions breed tougher dead (so guns alone can't carry a run) */
+  toughen(z: Zombie) { if (z.tough) return; z.tough = true; if (z.kind !== 'swarmer' && z.kind !== 'bloater') z.hp += Math.floor((this.region.danger - 1) / 2); }
+  /** The beacon only counts once its signal gets home safe (Haven or the outpost). */
+  commitBeacon() {
+    if (this.beaconBanked) return;
+    this.beaconBanked = true;
+    const rec = Save.data.regions[this.region.id] ?? { beacon: false, runs: 0, best: 0 };
+    rec.beacon = true; Save.data.regions[this.region.id] = rec; Save.write();
+  }
   isSafe(b: Building) { return b.kind === 'haven' || b.kind === 'outpost'; }
 
   private populate() {
@@ -147,7 +160,7 @@ export class Expedition {
     for (const b of this.terrain.buildings) {
       if (this.isSafe(b)) continue;
       const far = (b.x / this.length);
-      let nz = rng.int(r.roofZ[0], r.roofZ[1]) + (far > 0.6 ? 1 : 0);
+      let nz = Math.round((rng.int(r.roofZ[0], r.roofZ[1]) + (far > 0.6 ? 1 : 0)) * (r.danger >= 4 ? 0.8 : 1));
       if (b.kind === 'beacon') nz += 3 + r.danger;
       if (b.kind?.startsWith('poi:')) nz += 1 + Math.floor(r.danger / 2);
       for (let i = 0; i < nz; i++) this.zombies.push(new Zombie(rng.range(b.x + 8, b.x + b.w - 8), b.top, this.pickKind(), b));
@@ -161,7 +174,8 @@ export class Expedition {
     }
     // street hordes and street loot
     for (let x = 520; x < this.length - 300; x += rng.range(340, 560)) {
-      const n = Math.round(rng.int(r.horde[0], r.horde[1]) * (0.7 + 0.6 * x / this.length));
+      const thin = r.danger >= 4 ? 0.75 : 1; // keep the screen readable (and phones cool) deep in
+      const n = Math.round(rng.int(r.horde[0], r.horde[1]) * (0.7 + 0.6 * x / this.length) * thin);
       for (let i = 0; i < n; i++) this.spawnGround(x + rng.range(-60, 60), this.pickKind());
       if (rng.chance(0.55)) { const gx = this.gapNear(x); if (gx !== null) this.loot.push(new Loot(gx, this.terrain.groundY(gx) - 12, rng.chance(0.3) ? 'crate' : rng.pick(r.loot))); }
     }
@@ -196,8 +210,10 @@ export class Expedition {
   spawnGround(x: number, kind: ZKind) {
     x = clamp(x, 420, this.length - 60);
     const b = this.terrain.buildings.find((q) => x > q.x - 4 && x < q.x + q.w + 4);
-    if (b) { if (this.isSafe(b)) return; this.zombies.push(new Zombie(clamp(x, b.x + 6, b.x + b.w - 6), b.top, kind, b)); return; }
-    this.zombies.push(new Zombie(x, this.terrain.groundY(x), kind, null));
+    const z = b ? (this.isSafe(b) ? null : new Zombie(clamp(x, b.x + 6, b.x + b.w - 6), b.top, kind, b)) : new Zombie(x, this.terrain.groundY(x), kind, null);
+    if (!z) return;
+    if (this.terrain) this.toughen(z);
+    this.zombies.push(z);
   }
 
   // ======================================================= queries
@@ -210,7 +226,7 @@ export class Expedition {
 
   pickTarget(range: number, pistol: boolean, exclude?: Zombie, side = 0, below = false): Zombie | null {
     const s = this.ship;
-    if (!below) for (const h of s.hangers) { if (h.z === exclude || h.z.dead) continue; const sl = s.g.slots[h.slot]; if (side === 1 && sl.x < 0) continue; if (side === -1 && sl.x > 0) continue; return h.z; }
+    if (!below) for (const h of s.hangers) { if (h.z === exclude || h.z.dead || h.z.kind === 'bloater') continue; const sl = s.g.slots[h.slot]; if (side === 1 && sl.x < 0) continue; if (side === -1 && sl.x > 0) continue; return h.z; }
     let best: Zombie | null = null, bd = 1e9;
     for (const z of this.zombies) {
       if (z.dead || z.attached || z === exclude || z.sleeping) continue;
@@ -271,18 +287,18 @@ export class Expedition {
   }
   spit(z: Zombie) {
     const [cx, cy] = this.ship.envCircle();
-    const T = 0.9; const tx = cx + this.ship.vx * T, ty = cy + this.ship.vy * T;
+    const T = 1.1; const tx = cx + this.ship.vx * T * 0.5, ty = cy + this.ship.vy * T * 0.5;
     this.projs.push({ kind: 'acid', x: z.x + z.facing * 6, y: z.y - z.h, vx: (tx - z.x) / T, vy: (ty - (z.y - z.h)) / T - 0.5 * 500 * T, dead: false, t: 0 });
     Audio.puff();
   }
   throwRubble(z: Zombie) {
-    const s = this.ship; const T = 0.85; const tx = s.x + s.vx * T, ty = s.basketY - 30 + s.vy * T;
+    const s = this.ship; const T = 0.95; const tx = s.x + s.vx * T * 0.6, ty = s.basketY - 30 + s.vy * T * 0.6;
     this.projs.push({ kind: 'rubble', x: z.x, y: z.y - z.h - 10, vx: (tx - z.x) / T, vy: (ty - (z.y - z.h)) / T - 0.5 * 700 * T, dead: false, t: 0 });
     Audio.thump();
   }
   onCrash(why: string) {
     this.state = 'crashed'; this.endT = 0; this.crashWhy = why;
-    this.banner('BALLOON DOWN!', why === 'envelope' ? 'The envelope gave out…' : 'Jerry was overrun…', P.redBright);
+    this.banner(why === 'fuel' ? 'OUT OF FUEL!' : 'BALLOON DOWN!', why === 'envelope' ? 'The envelope gave out…' : why === 'fuel' ? 'Stranded on the ground…' : 'Jerry was overrun…', P.redBright);
   }
   banner(text: string, sub?: string, color?: string) { if (this.banners.length < 4) this.banners.push({ text, sub, color, t: 2.6 }); }
   showTip(id: string) {
@@ -304,7 +320,7 @@ export class Expedition {
     }
     for (const it of this.loot) if (!it.hooked && dist(x, y, it.x, it.y) < r) { it.vy = -rand(160, 240); it.vx = (it.x - x) * 2; }
     for (const s of this.survivors) if (s.state === 'wait' && dist(x, y, s.x, s.y) < r * 0.7) { s.hp -= 1; this.fx.popup(s.x, s.y - 40, 'HEY! WATCH IT!', P.parchment, 13); }
-    if (hurtShip && dist(x, y, this.ship.x, this.ship.basketY) < r * 0.6) this.ship.hurtEnv(this, 1, 'bomb');
+    if (hurtShip && dist(x, y, this.ship.x, this.ship.basketY) < r * 0.6) { this.ship.swingV += 5; this.ship.wobble = 1; this.fx.popup(this.ship.x, this.ship.y - 60, 'WHOA!', P.parchment, 14); }
   }
   explode(x: number, y: number, scale = 1) {
     const r = 64 * scale * this.ship.stats.blastMul;
@@ -381,6 +397,7 @@ export class Expedition {
         for (let i = 0; i < n; i++) this.spawnGround(x + rand(-40, 40), this.pickKind());
       }
     }
+    this.rangedCd -= dt;
     for (const it of this.loot) it.update(this, dt);
     this.loot = this.loot.filter((i) => !i.dead);
     this.updateOrdnance(dt);
@@ -464,8 +481,8 @@ export class Expedition {
     for (const p of this.projs) {
       p.t += dt; p.vy += (p.kind === 'acid' ? 500 : 700) * dt; p.x += p.vx * dt; p.y += p.vy * dt;
       if (p.kind === 'acid' && Math.random() < 0.5) this.fx.add({ kind: 'drop', x: p.x, y: p.y, vx: 0, vy: 30, r: 2, life: 0.3, max: 0.3, color: '#9ad040' });
-      if (!s.dead && s.hitsEnvelope(p.x, p.y, 4)) { p.dead = true; s.hurtEnv(this, 1, p.kind); this.fx.sparks(p.x, p.y, 8, p.kind === 'acid' ? '#9ad040' : P.rust); continue; }
-      if (!s.dead && s.touchesHull(p.x, p.y, 2)) { p.dead = true; if (p.kind === 'rubble') { s.hitSomeone(this, 1, 'rubble'); s.swingV += 3; } else if (Math.random() < 0.3) s.hitSomeone(this, 1, 'acid'); this.fx.dust(p.x, p.y, 3); Audio.clank(); continue; }
+      if (!s.dead && s.hitsEnvelope(p.x, p.y, 4)) { p.dead = true; s.hurtEnv(this, p.kind === 'acid' ? 0.75 : 1, p.kind); this.fx.sparks(p.x, p.y, 8, p.kind === 'acid' ? '#9ad040' : P.rust); continue; }
+      if (!s.dead && s.touchesHull(p.x, p.y, 2)) { p.dead = true; if (p.kind === 'rubble') { s.swingV += 4; const plate = [0.3, 0.15, 0.06][s.stats.plating]; if (Math.random() < plate) s.hitSomeone(this, 1, 'rubble'); else { s.hurtEnv(this, 0.5, 'rubble'); this.fx.popup(p.x, p.y - 10, 'CLONK!', P.steelLight, 13); } } else if (Math.random() < 0.3) s.hitSomeone(this, 1, 'acid'); this.fx.dust(p.x, p.y, 3); Audio.clank(); continue; }
       if (p.y > this.terrain.surfaceY(p.x) || p.t > 4) p.dead = true;
     }
     this.projs = this.projs.filter((p) => !p.dead);
@@ -514,9 +531,9 @@ export class Expedition {
   private updateStations(dt: number) {
     const s = this.ship;
     if (this.state !== 'play' || s.dead || !s.launched) return;
-    const near = (b: Building, wx = 80) => Math.abs(s.x - (b.x + b.w / 2)) < wx && s.basketY > b.top - 40 && Math.abs(s.vy) < 120;
+    const near = (b: Building, wx = 80, up = 40) => Math.abs(s.x - (b.x + b.w / 2)) < wx && s.basketY > b.top - up && Math.abs(s.vy) < 140;
     // outpost: bank cargo, refuel once, patch up
-    if (near(this.outpost)) {
+    if (near(this.outpost, 85, 70)) {
       this.outpostT += dt;
       if (this.outpostT > 1 && this.outpostT - dt <= 1) {
         let banked = 0;
@@ -526,6 +543,7 @@ export class Expedition {
         s.crew = s.crew.filter((c) => !c.isNew);
         this.bankedTrophies.push(...this.trophies); this.trophies = [];
         let sub = banked ? `Banked ${banked} supplies` : 'Nothing to bank';
+        if (this.beaconLit && !this.beaconBanked) { this.commitBeacon(); sub += ' · beacon locked in!'; }
         if (newbies.length) sub += ` · ${newbies.length} survivor${newbies.length > 1 ? 's' : ''} safe`;
         if (!this.refueled) { this.refueled = true; s.fuel = s.maxFuel; s.env = Math.min(s.maxEnv, s.env + s.maxEnv * 0.4); s.hp = Math.min(s.maxHp, s.hp + 1); for (const c of s.crew) { c.ko = false; c.hp = Math.max(c.hp, Math.ceil(c.max / 2)); } sub += ' · refuelled & patched'; }
         this.banner('OUTPOST', sub, P.tealLight); Audio.buy();
@@ -534,21 +552,18 @@ export class Expedition {
     // beacon: light the radio mast to open the next region
     if (!this.beaconLit) {
       const mx = this.beacon.x + this.beacon.w / 2, my = this.beacon.top - 90;
-      if (dist(s.x, s.y, mx, my) < 110 || dist(s.x, s.basketY, mx, my) < 70) {
+      if (Math.abs(s.x - mx) < 120 && s.basketY > my - 190 && s.basketY < my + 50) {
         this.beaconT += dt;
         if (this.beaconT > 1.5) {
           this.beaconLit = true;
-          const rec = Save.data.regions[this.region.id] ?? { beacon: false, runs: 0, best: 0 };
-          rec.beacon = true; Save.data.regions[this.region.id] = rec; Save.write();
           this.fx.confetti(mx, my, 50); Audio.fanfare();
-          const nxt = BIOME_ORDER[BIOME_ORDER.indexOf(this.region.id) + 1];
-          this.banner('BEACON LIT!', nxt ? `${BIOMES[nxt].name} is now on the map · now get home!` : 'The whole world can see us now!', P.goldLight);
+          this.banner('BEACON LIT!', this.beaconWasLit ? 'Still shining — now get home!' : 'Get it home (or to the outpost) to lock it in!', P.goldLight);
           this.loot.push(Object.assign(new Loot(mx, my - 20, 'cache'), { vy: -100 }));
         }
       } else this.beaconT = Math.max(0, this.beaconT - dt);
     }
     // home sweet home
-    if (this.outbound && near(this.haven, 90)) {
+    if (this.outbound && near(this.haven, 100, 90)) {
       this.homeT += dt;
       if (this.homeT > 0.6) { this.state = 'home'; this.endT = 0; Audio.fanfare(); Audio.voice('woo'); s.setExpr('cheer', 99); s.setArm('cheer', 99); this.fx.confetti(s.x, s.y - 40, 60); }
     } else this.homeT = 0;
@@ -683,7 +698,7 @@ export interface Report {
   region: BiomeId; success: boolean; why: string;
   gains: Record<ResKey, number>; rescued: CrewMember[]; trophies: string[];
   xp: { m: CrewMember; gained: number; leveled: boolean }[]; lost: CrewMember[]; injured: CrewMember[];
-  kills: number; maxHangers: number; beacon: boolean; firstBeacon: boolean; foodUsed: number; dist: number;
+  kills: number; maxHangers: number; beacon: boolean; firstBeacon: boolean; beaconLost: boolean; foodUsed: number; dist: number;
 }
 export function settle(e: Expedition): Report {
   const s = Save.data;
@@ -723,12 +738,13 @@ export function settle(e: Expedition): Report {
   // crew that stayed home rest up
   for (const m of s.crew) if (!e.ship.crew.some((c) => c.m === m) && m.injured > 0) m.injured--;
   s.aboard = s.aboard.filter((id) => !s.missing[id]);
+  if (success && e.beaconLit) e.commitBeacon();
   const rec = s.regions[e.region.id] ?? { beacon: false, runs: 0, best: 0 };
   rec.runs++; rec.best = Math.max(rec.best, Math.round(e.distMax)); s.regions[e.region.id] = rec;
   s.stats.expeditions++; s.stats.zombies += e.kills; s.stats.shaken += e.shaken; s.stats.maxHangers = Math.max(s.stats.maxHangers, e.maxHangers);
   if (!success) s.stats.crashes++;
   if (success) s.seenTutorial = true;
   Save.write();
-  return { region: e.region.id, success, why: e.crashWhy, gains, rescued, trophies, xp, lost, injured, kills: e.kills, maxHangers: e.maxHangers, beacon: e.beaconLit, firstBeacon: e.beaconLit && !e.beaconWasLit, foodUsed: e.foodUsed, dist: e.distMax };
+  return { region: e.region.id, success, why: e.crashWhy, gains, rescued, trophies, xp, lost, injured, kills: e.kills, maxHangers: e.maxHangers, beacon: e.beaconBanked, firstBeacon: e.beaconBanked && !e.beaconWasLit, beaconLost: e.beaconLit && !e.beaconBanked && !e.beaconWasLit, foodUsed: e.foodUsed, dist: e.distMax };
 }
 void bodyText;

@@ -21,7 +21,7 @@ export const UPGRADES: UpgradeDef[] = [
     desc: ['A proper new bag: +20% lift, +3 envelope HP. Visibly bigger.', 'Circus-sized: +40% lift total, +6 HP. Carries a real crew.', 'Grand: +65% lift, +10 HP. Shrugs off a few hangers.', 'Titan: +95% lift, +15 HP. Lifts a flying fortress.'],
     costs: [{ fabric: 10, scrap: 10 }, { fabric: 22, scrap: 20, parts: 4 }, { fabric: 40, scrap: 35, parts: 10 }, { fabric: 70, scrap: 60, parts: 18, tech: 6 }] },
   { id: 'skin', cat: 'envelope', name: 'Rip-stop Lining', names: ['Leather Straps', 'Steel Netting'],
-    desc: ['Leather straps: spit & rubble do 30% less envelope damage.', 'Full steel netting: 55% less envelope damage.'],
+    desc: ['Leather straps: spit & rubble do 25% less envelope damage.', 'Full steel netting: 45% less envelope damage.'],
     costs: [{ fabric: 12, scrap: 10 }, { fabric: 25, scrap: 25, parts: 8 }], region: 2 },
   // BURNER
   { id: 'burner', cat: 'burner', name: 'Burner', names: ['Hot Burner', 'Twin Burners', 'Triple Jet'],
@@ -32,7 +32,7 @@ export const UPGRADES: UpgradeDef[] = [
   { id: 'prop', cat: 'burner', name: 'Propeller', desc: ['Pedal prop: 25% faster cruising.', 'Motor prop: 50% faster cruising.'], costs: [{ scrap: 14 }, { scrap: 28, parts: 6 }] },
   // BASKET
   { id: 'basket', cat: 'basket', name: 'Basket', names: ['Family Basket', 'Outrigger Platforms', 'Two-Deck Gondola', 'Flying Fortress'],
-    desc: ['Wider basket: room for 2 crew.', 'Side platforms with railings: 4 crew.', 'A gondola with crew quarters below: 6 crew.', 'A full flying fortress with a cabin: 8 crew.'],
+    desc: ['Wider basket: room for 2 crew. Needed for Smokestack Row.', 'Side platforms with railings: 4 crew. Needed for Downtown.', 'A gondola with crew quarters below: 6 crew. Needed for the Quarantine Zone.', 'A full flying fortress with a cabin: 8 crew. Needed for the Dead Zone.'],
     costs: [{ scrap: 14, fabric: 4 }, { scrap: 30, fabric: 10, parts: 5 }, { scrap: 55, fabric: 18, parts: 12, tech: 2 }, { scrap: 90, fabric: 30, parts: 22, tech: 6 }] },
   { id: 'floor', cat: 'basket', name: 'Reinforced Floor', desc: ['Hold more weight: cargo & hangers slow you 25% less.', 'Steel deck: 45% less, and boarders do less damage.'], costs: [{ scrap: 12, parts: 2 }, { scrap: 26, parts: 7 }] },
   { id: 'storage', cat: 'basket', name: 'Cargo Hold', desc: ['Crates on the side: hook carries 2 things at once.', 'Full cargo net: hook carries 3 things at once.'], costs: [{ scrap: 10, fabric: 6 }, { scrap: 22, fabric: 12, parts: 4 }] },
@@ -73,9 +73,9 @@ export function computeStats(levels: Record<string, number>): Stats {
   return {
     tier, seats: [1, 2, 4, 6, 8][tier], envLevel: L('envelope'),
     liftMul: [1, 1.2, 1.4, 1.65, 1.95][L('envelope')], baseWeight: [1, 1.08, 1.2, 1.34, 1.5][tier],
-    envHp: 8 + [0, 3, 6, 10, 15][L('envelope')], envResist: [0, 0.3, 0.55][L('skin')], hp: 3,
+    envHp: 8 + [0, 3, 6, 10, 15][L('envelope')], envResist: [0, 0.25, 0.45][L('skin')], hp: 3,
     burnerPower: [1, 1.25, 1.5, 1.8][L('burner')], burners: [1, 1, 2, 3][L('burner')], fuelUse: [1, 0.8, 0.6][L('regulator')],
-    boost: L('boost'), propSpeed: [1, 1.25, 1.5][L('prop')], fuelCap: 100 * [1, 1.4, 1.8, 2.2][L('tank')],
+    boost: L('boost'), propSpeed: [1, 1.25, 1.5][L('prop')], fuelCap: 120 * [1, 1.4, 1.8, 2.25][L('tank')],
     loadTol: [0, 0.25, 0.45][L('floor')], floor: L('floor'), cargoCap: 1 + L('storage'),
     plating: L('plating'), spikes: L('spikes') > 0, shakePower: [100, 150, 230][L('shaker')], shakeCd: [1.4, 1.0, 0.75][L('shaker')], tesla: L('tesla') > 0,
     bombCap: 3 + 2 * L('bombs'), bombReload: [2.4, 1.7, 1.1][L('bombs')], fireCap: [0, 2, 4][L('firebomb')], mineCap: L('mines') ? 3 : 0,

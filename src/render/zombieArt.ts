@@ -1,6 +1,7 @@
 import { P } from './palette';
 import { pen } from './ink';
 import { hash } from '../core/math';
+import { Engine } from '../core/engine';
 
 export type ZKindArt = 'walker' | 'swarmer' | 'climber' | 'leaper' | 'brute' | 'spitter' | 'bloater' | 'screamer' | 'soldier';
 export type ZPose = 'walk' | 'reach' | 'climb' | 'crouch' | 'leap' | 'hang' | 'fall' | 'board' | 'stun' | 'scream' | 'spit' | 'throw' | 'idle';
@@ -19,6 +20,7 @@ export const Z_SIZE: Record<ZKindArt, { h: number; w: number; arm: number }> = {
 
 /** Cartoon zombie, origin at the feet (or at the hands for 'hang'). Facing 1 = right. */
 export function drawZombie(ctx: CanvasRenderingContext2D, z: ZDraw) {
+  if (Engine.lite) { drawZombieLite(ctx, z); return; }
   const S = Z_SIZE[z.kind];
   const h1 = hash(z.seed), h2 = hash(z.seed + 3.3), h3 = hash(z.seed + 7.7);
   const skin = z.kind === 'bloater' ? '#b8c070' : z.kind === 'spitter' ? '#9ac080' : SKINS[Math.floor(h1 * SKINS.length)];
@@ -135,4 +137,27 @@ export function drawZombie(ctx: CanvasRenderingContext2D, z: ZDraw) {
   }
   ctx.restore();
   ctx.globalAlpha = 1;
+}
+
+/** Cheap silhouette for slow devices: same size, colour and pose read, a quarter of the paths. */
+function drawZombieLite(ctx: CanvasRenderingContext2D, z: ZDraw) {
+  const S = Z_SIZE[z.kind];
+  const h1 = hash(z.seed), h2 = hash(z.seed + 3.3);
+  const skin = z.kind === 'bloater' ? '#b8c070' : SKINS[Math.floor(h1 * SKINS.length)];
+  const shirt = z.kind === 'soldier' ? '#5c6a4e' : CLOTHES[Math.floor(h2 * CLOTHES.length)];
+  const t = z.t + h1 * 10, H = S.h, W = S.w;
+  ctx.save(); ctx.scale(z.facing, 1);
+  if (z.pose === 'hang') ctx.translate(0, H * 0.95);
+  if (z.pose === 'fall') ctx.rotate(z.spin ?? 0);
+  const up = z.pose === 'reach' || z.pose === 'hang' || z.pose === 'climb' || z.pose === 'leap' || z.pose === 'fall';
+  const leg = Math.sin(t * 8) * 3;
+  ctx.lineCap = 'round'; ctx.strokeStyle = P.ink; ctx.lineWidth = Math.max(4, W * 0.4);
+  ctx.beginPath(); ctx.moveTo(-2, -H * 0.36); ctx.lineTo(-3 + leg, 0); ctx.moveTo(2, -H * 0.36); ctx.lineTo(3 - leg, 0);
+  const ay = up ? -H * 1.05 : -H * 0.62;
+  ctx.moveTo(0, -H * 0.62); ctx.lineTo(S.arm * (up ? 0.3 : 0.9), ay); ctx.stroke();
+  ctx.fillStyle = shirt; ctx.beginPath(); ctx.ellipse(0, -H * 0.5, W * 0.55, H * 0.22, 0, 0, 7); ctx.fill(); ctx.lineWidth = 1.8; ctx.stroke();
+  ctx.fillStyle = skin; ctx.beginPath(); ctx.arc(2, -H * 0.82, H * 0.17, 0, 7); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = z.burn ? P.flame2 : '#f6f2c0'; ctx.fillRect(3, -H * 0.86, 3, 3);
+  ctx.restore();
+  if (z.burn && z.burn > 0) { ctx.fillStyle = P.flame2; ctx.beginPath(); ctx.arc(0, -H * 0.7, 5 + Math.sin(t * 20) * 2, 0, 7); ctx.fill(); }
 }

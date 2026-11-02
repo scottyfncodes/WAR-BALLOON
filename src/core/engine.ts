@@ -28,6 +28,8 @@ class EngineImpl {
   private last = 0;
   private fpsT = 0; private fpsN = 0; fps = 60;
   private lowFpsStreak = 0;
+  /** simplified drawing when even the lowest resolution can't hold the frame rate */
+  lite = false; private liteStreak = 0;
   isTouch = false;
   paused = false; // hard pause (tab hidden)
 
@@ -94,6 +96,7 @@ class EngineImpl {
       this.fps = this.fpsN / this.fpsT; this.fpsT = 0; this.fpsN = 0;
       if (this.fps < 48 && this.quality > 1.25) { if (++this.lowFpsStreak >= 2) { this.quality = Math.max(1.25, this.quality - 0.5); this.resize(); this.lowFpsStreak = 0; } }
       else this.lowFpsStreak = 0;
+      if (this.fps < 45 && this.quality <= 1.25) { if (++this.liteStreak >= 2) this.lite = true; } else this.liteStreak = 0;
     }
     const STEP = 1 / 60;
     this.acc += dt;

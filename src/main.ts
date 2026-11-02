@@ -14,7 +14,8 @@ import { PlayScene } from './scenes/play';
 import { ReportScene } from './scenes/report';
 import { EndingScene } from './scenes/ending';
 import { go } from './scenes/router';
-import { BIOMES } from './game/biomes';
+import { BIOMES, regionNeeds } from './game/biomes';
+import { settle } from './game/expedition';
 import { computeStats, UPGRADES } from './game/upgrades';
 import { makeSurvivor } from './game/crew';
 import { RNG } from './core/math';
@@ -36,6 +37,6 @@ async function boot() {
   if (m && (BIOMES as any)[m]) go(Scenes.play, { region: m, seed: q.get('seed') ? +q.get('seed')! : undefined }, true);
   else if (q.get('scene') && (Scenes as any)[q.get('scene')!]) go((Scenes as any)[q.get('scene')!], undefined, true);
   else go(Scenes.title, undefined, true);
-  (window as any).__wb = { Engine, Save, Scenes, go, computeStats, UPGRADES, makeSurvivor, RNG };
+  (window as any).__wb = { Engine, Save, Scenes, go, computeStats, UPGRADES, makeSurvivor, RNG, settleForSim: settle, regionNeeds, BIOMES };
 }
 boot();

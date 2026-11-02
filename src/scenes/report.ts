@@ -10,7 +10,7 @@ import { Scenes } from './registry';
 import { drawBackdrop, drawPost } from './backdrop';
 import { RES_KEYS, drawResIcon, RES_LABEL } from '../game/resources';
 import { ROLE_INFO } from '../game/crew';
-import { BIOMES, BIOME_ORDER } from '../game/biomes';
+import { BIOMES, BIOME_ORDER, regionNeeds } from '../game/biomes';
 import { trophyById } from '../game/cosmetics';
 import { UPGRADES } from '../game/upgrades';
 import { canAfford } from './common';
@@ -40,7 +40,7 @@ export class ReportScene implements Scene {
     drawPost(ctx, W, H, t);
     const T = 10 + Engine.safe.t * 0.5;
     ribbon(ctx, W / 2, T + 30, Math.min(420, W * 0.5), r.success ? 'WELCOME HOME!' : 'BALLOON DOWN', r.success ? P.olive : P.red, 28);
-    const sub = r.success ? `${BIOMES[r.region].name} · ${r.kills} zombies dealt with · ${r.maxHangers} on the basket at once` : r.why === 'bail' ? 'Jerry bailed out and limped home with what fit in his pockets.' : r.why === 'envelope' ? 'The envelope tore open. Jerry crash-landed and crawled home.' : 'The dead overran the basket. Jerry barely made it back.';
+    const sub = r.success ? `${BIOMES[r.region].name} · ${r.kills} zombies dealt with · ${r.maxHangers} on the basket at once` : r.why === 'bail' ? 'Jerry bailed out and limped home with what fit in his pockets.' : r.why === 'envelope' ? 'The envelope tore open. Jerry crash-landed and crawled home.' : r.why === 'fuel' ? 'Out of fuel and stranded. Jerry walked home with what he could carry.' : 'The dead overran the basket. Jerry barely made it back.';
     bodyText(ctx, sub, W / 2, T + 70, 16, P.parchment, 'center');
     const pw = Math.min(W - 30, 900), px = W / 2 - pw / 2, py = T + 88, ph = H - py - 70 - Engine.safe.b * 0.5;
     const colW = pw / 3 - 8;
@@ -86,8 +86,9 @@ export class ReportScene implements Scene {
     if (r.firstBeacon) {
       const nxt = BIOME_ORDER[BIOME_ORDER.indexOf(r.region) + 1];
       nl('★ BEACON LIT!', P.oliveDark, 17);
-      if (nxt) nl(`Unlocked: ${BIOMES[nxt].name}`, P.tealDark, 15); else nl('The Dead Zone is beaten!', P.tealDark, 15);
-    } else if (!Save.data.regions[r.region]?.beacon) nl(`Beacon still dark (${Math.round(r.dist / BIOMES[r.region].length * 100)}% of the way)`, P.inkSoft);
+      if (nxt) { nl(`Unlocked: ${BIOMES[nxt].name}`, P.tealDark, 15); const miss = regionNeeds(nxt, Save.data.levels); if (miss.length) nl(`…needs ${miss.join(' + ')}`, P.redDark, 13); } else nl('The Dead Zone is beaten!', P.tealDark, 15);
+    } else if (r.beaconLost) { nl('Beacon lit… but the signal died', P.redDark, 15); nl('with the balloon. Get it HOME next time!', P.redDark, 14); }
+    else if (!Save.data.regions[r.region]?.beacon) nl(`Beacon still dark (${Math.round(r.dist / BIOMES[r.region].length * 100)}% of the way)`, P.inkSoft);
     const s = Save.data;
     const affordable = UPGRADES.filter((u) => { const lv = s.levels[u.id] ?? 0; return lv < u.costs.length && canAfford(u.costs[lv]) && (!u.region || Save.regionUnlocked(u.region, BIOME_ORDER)) && (!u.requires || (s.levels[u.requires[0]] ?? 0) >= u.requires[1]); });
     if (affordable.length) { nl('You can afford:', P.ink, 15); for (const u of affordable.slice(0, 5)) nl('• ' + u.name, P.oliveDark); }

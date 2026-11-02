@@ -324,7 +324,7 @@ export class Enemy {
       }
       return;
     }
-    this.cd -= dt; this.st += dt;
+    this.cd -= dt * w.aggro; this.st += dt;
     switch (this.kind) {
       case 'buzzard': this.updBuzzard(w, dt); break;
       case 'turret': this.updTurret(w, dt); break;

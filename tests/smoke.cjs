@@ -52,8 +52,17 @@ const fail = (m) => { console.error('SMOKE FAIL:', m); process.exit(1); };
   await open(base + '?play=a1', 2000);
   await ev(`(()=>{const w=${W};const [a,l]=w.terrain.lava[0];w.player.x=a+l/2;w.player.y=w.terrain.groundY(a+l/2)-30;w.player.vy=100;w.player.invuln=0;})()`); await p.waitForTimeout(800);
   if ((await ev(`${W}.player.damageTaken`)) < 1) fail('lava did not burn');
+  // Camps: deliver all three Haven requests -> perk active (+1 bomb capacity)
+  await open(base + '?scene=title', 500);
+  await ev(`(()=>{const s=__wb.Save.data;s.res={fuel:50,scrap:80,fabric:40,food:10,water:10,electronics:10};s.camps={};__wb.Save.write();__wb.go(__wb.Scenes.camp,{region:'city'});})()`);
+  await p.waitForTimeout(800);
+  for (let i = 0; i < 3; i++) { await ev(`__wb.Engine.scene.fulfil()`); }
+  if ((await ev(`__wb.Save.data.camps.city`)) !== 3) fail('camp requests not fulfilled');
+  if (!(await ev(`__wb.Save.perks().includes('workshop')`))) fail('camp perk not granted');
+  await open(base + '?play=m2', 600);
+  if ((await ev(`${W}.player.stats.bombCap`)) !== 4) fail('workshop perk not applied to bombs');
   // Menus render
-  for (const s of ['title', 'map', 'garage', 'ending']) { await open(base + '?scene=' + s, 1200); }
+  for (const s of ['title', 'map', 'garage', 'ending', 'camp']) { await open(base + '?scene=' + s, 1200); }
   await b.close();
   if (errs.length) fail('page errors:\n' + errs.join('\n'));
   console.log('SMOKE OK');

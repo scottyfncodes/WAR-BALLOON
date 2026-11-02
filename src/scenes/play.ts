@@ -25,7 +25,9 @@ export class PlayScene implements Scene {
     this.provisions = s.provisions && s.res.food >= 1 && s.res.water >= 1;
     if (this.provisions) { s.res.food--; s.res.water--; Save.write(); }
     const assist = (s.fails[this.spec.id] ?? 0) >= 2 ? 1 : 0;
-    this.w = new World(this.spec, computeStats(s.levels), s.levels, s.paint, this.provisions, assist);
+    const diffHp = s.difficulty === 'relaxed' ? 2 : s.difficulty === 'hard' ? -1 : 0;
+    this.w = new World(this.spec, computeStats(s.levels, Save.perks()), s.levels, s.paint, this.provisions, assist + diffHp);
+    this.w.aggro = s.difficulty === 'relaxed' ? 0.7 : s.difficulty === 'hard' ? 1.3 : 1;
     this.w.viewW = Engine.W; this.w.viewH = Engine.H;
     this.touch = new TouchControls(); this.touch.visible = Engine.isTouch || Input.usingTouch;
     this.touch.boostEnabled = this.w.player.stats.boost > 0;

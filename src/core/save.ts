@@ -16,17 +16,20 @@ export interface SaveData {
   population: number;
   seenRegions: string[];
   fails: Record<string, number>;
+  camps: Record<string, number>;
+  difficulty: 'relaxed' | 'normal' | 'hard';
   stats: { bombs: number; destroyed: number; hooked: number; };
 }
 
 const KEY = 'warballoon.save.v1';
+const PERK_OF: Record<string, string> = { city: 'workshop', dust: 'fuelrich', flood: 'longrope', green: 'herbal', frozen: 'lab', ash: 'forge' };
 
 export function freshSave(): SaveData {
   return {
     v: 1,
     res: { fuel: 0, scrap: 0, fabric: 0, food: 1, water: 1, electronics: 0 },
     levels: {}, missions: {}, postcards: [], paint: 'classic', paintsUnlocked: ['classic'],
-    seenIntro: false, music: true, sfx: true, provisions: false, totalRuns: 0, population: 0, seenRegions: ['city'], fails: {},
+    seenIntro: false, music: true, sfx: true, provisions: false, totalRuns: 0, population: 0, seenRegions: ['city'], fails: {}, camps: {}, difficulty: 'normal',
     stats: { bombs: 0, destroyed: 0, hooked: 0 },
   };
 }
@@ -43,6 +46,8 @@ function load(): SaveData {
 
 export const Save = {
   data: load(),
+  /** Permanent perks earned by completing every request at a camp. */
+  perks(): string[] { return Object.entries(PERK_OF).filter(([c]) => (this.data.camps[c] ?? 0) >= 3).map(([, p]) => p); },
   write() { try { localStorage.setItem(KEY, JSON.stringify(this.data)); } catch { /* storage blocked: progress lives for this session */ } },
   reset() { this.data = freshSave(); this.write(); },
   /** Portable save code (survives clearing Safari data if you keep the code). */

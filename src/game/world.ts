@@ -26,6 +26,8 @@ export class World {
   eruptions: Eruption[] = [];
   biome: Biome;
   stormLevel = 1;
+  /** enemy fire-rate multiplier from the difficulty setting */
+  aggro = 1;
   exitX: number;
   fx = new FX();
   camX = 0; camY = 0; viewW = 960; viewH = 540;
@@ -145,7 +147,7 @@ export class World {
     let text = ''; let col: string = P.gold;
     switch (it.kind) {
       case 'scrap': add('scrap', 2); text = '+2 SCRAP'; break;
-      case 'fuel': add('fuel', 2); p.fuel = Math.min(p.maxFuel, p.fuel + 40); text = '+FUEL'; col = P.orangeLight; break;
+      case 'fuel': add('fuel', 2); p.fuel = Math.min(p.maxFuel, p.fuel + 40 * p.stats.fuelPickup); text = '+FUEL'; col = P.orangeLight; break;
       case 'fabric': add('fabric', 2); text = '+2 FABRIC'; col = P.tealLight; if (p.hp < p.maxHp) { p.hp++; text = 'PATCHED UP!'; } break;
       case 'food': add('food', 1); text = '+1 FOOD'; break;
       case 'water': add('water', 1); text = '+1 WATER'; col = P.tealLight; break;

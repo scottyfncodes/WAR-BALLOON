@@ -39,7 +39,7 @@ export class Player {
     this.x = x; this.y = y; this.stats = stats; this.levels = levels; this.paint = paint;
     this.fuel = Math.min(stats.fuelCap + extraFuel, stats.fuelCap + extraFuel);
     this.maxFuel = stats.fuelCap + extraFuel;
-    this.hp = stats.maxHp + extraHp; this.maxHp = stats.maxHp + extraHp;
+    this.hp = Math.max(2, stats.maxHp + extraHp); this.maxHp = this.hp;
     this.bombs = stats.bombCap;
     const ax = this.anchor();
     for (let i = 0; i < 10; i++) this.rope.push({ x: ax.x, y: ax.y + i, px: ax.x, py: ax.y + i });
@@ -147,7 +147,7 @@ export class Player {
     this.updateHook(w, c, dt);
     // ---------- regen / fuel trickle ----------
     if (this.grounded && this.fuel < 25) { this.fuel = Math.min(25, this.fuel + 6 * dt); if (Math.random() < 0.1) Audio.ratchet(); this.setArm('crank', 0.2); }
-    if (st.patchKit && this.hp < this.maxHp) { this.patchT += dt; if (this.patchT > 30) { this.patchT = 0; this.hp++; w.fx.popup(this.x, this.y - 140, '+1 PATCH', P.tealLight); Audio.pickup('fabric'); } }
+    if (st.patchEvery > 0 && this.hp < this.maxHp) { this.patchT += dt; if (this.patchT > st.patchEvery) { this.patchT = 0; this.hp++; w.fx.popup(this.x, this.y - 140, '+1 PATCH', P.tealLight); Audio.pickup('fabric'); } }
     // ---------- animation ----------
     this.updateAnim(w, c, dt);
   }

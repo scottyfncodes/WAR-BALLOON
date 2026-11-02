@@ -22,7 +22,7 @@ import { canAfford } from './common';
 export class ResultsScene implements Scene {
   t = 0; spec!: MissionSpec; success = false; stars = 0; gains: Record<ResKey, number> = {} as any;
   objs: { text: string; done: boolean; optional: boolean; failed: boolean }[] = [];
-  unlocks: string[] = []; fx = new FX(); lastTick = 0; next: MissionSpec | null = null; hard = false;
+  unlocks: string[] = []; fx = new FX(); finale = false; lastTick = 0; next: MissionSpec | null = null; hard = false;
   enter(d: { mission: MissionSpec; world: World; success: boolean }) {
     this.t = 0; this.spec = d.mission; this.success = d.success; this.unlocks = []; this.fx = new FX(); this.lastTick = 0;
     const w = d.world, s = Save.data;
@@ -55,13 +55,15 @@ export class ResultsScene implements Scene {
     }
     // postcards persist even on failure (you did grab it!)
     const pc = this.spec.ents.find((e) => e.kind === 'postcard')?.id;
-    if (w.postcard && pc && !s.postcards.includes(pc)) { s.postcards.push(pc); this.unlocks.push(`Postcard ${s.postcards.length}/4 found`); }
+    if (w.postcard && pc && !s.postcards.includes(pc)) { s.postcards.push(pc); this.unlocks.push(`Postcard ${s.postcards.length}/${MISSIONS.length} found`); }
     if (s.postcards.length >= 3 && !s.paintsUnlocked.includes('sunset')) { s.paintsUnlocked.push('sunset'); this.unlocks.push('Paint job: Sunset Checks'); }
     s.stats.bombs += w.bombsDropped; s.stats.destroyed += w.kills; s.stats.hooked += w.hookedCount;
     Save.write();
     this.next = this.success ? (MISSIONS.find((m) => m.requires === this.spec.id && !s.missions[m.id]?.done) ?? null) : null;
     Audio.playSong('haven');
-    if (this.spec.id === 'm4' && this.success) this.unlocks.push('The Dustlands await… (next update)');
+    const regionDone: Record<string, string> = { m4: 'The Dustlands', d3: 'The Flood', f3: 'The Green', g3: 'The Frozen Reach', z3: 'The Ashlands' };
+    if (this.success && !wasDone && regionDone[this.spec.id]) this.unlocks.push(`NEW REGION: ${regionDone[this.spec.id]}!`);
+    this.finale = this.success && this.spec.id === 'a3';
   }
   update(dt: number) {
     this.t += dt; UI.update(); this.fx.update(dt);
@@ -121,7 +123,8 @@ export class ResultsScene implements Scene {
     const by = py + ph - 64, bw = (pw - 60) / 3;
     UI.button(ctx, 'garage', px + 20, by, bw, 50, 'GARAGE', () => go(Scenes.garage), { style: affordable ? 'red' : 'teal', size: 19, sub: affordable ? 'upgrade ready!' : undefined });
     UI.button(ctx, 'map', px + 30 + bw, by, bw, 50, 'MAP', () => go(Scenes.map), { style: 'brass', size: 19, keys: ['Escape'] });
-    if (this.success && this.next) UI.button(ctx, 'next', px + 40 + bw * 2, by, bw, 50, 'NEXT', () => go(Scenes.play, { mission: this.next! }), { style: 'olive', size: 19, keys: ['Enter'] });
+    if (this.finale) UI.button(ctx, 'end', px + 40 + bw * 2, by, bw, 50, 'THE END', () => go(Scenes.ending), { style: 'olive', size: 19, keys: ['Enter'] });
+    else if (this.success && this.next) UI.button(ctx, 'next', px + 40 + bw * 2, by, bw, 50, 'NEXT', () => go(Scenes.play, { mission: this.next! }), { style: 'olive', size: 19, keys: ['Enter'] });
     else UI.button(ctx, 'retry', px + 40 + bw * 2, by, bw, 50, this.success ? 'FLY AGAIN' : 'RETRY', () => go(Scenes.play, { mission: this.spec.free ? this.spec : missionById(this.spec.id)! }), { style: 'olive', size: 18, keys: ['Enter'] });
     this.fx.draw(ctx); this.fx.drawText(ctx);
     fadeIn(ctx, t, W, H, 0.01);

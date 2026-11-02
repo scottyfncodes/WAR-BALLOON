@@ -7,22 +7,27 @@ import { clamp, RNG, damp, easeOutBack } from '../core/math';
 import { UI, panel, fadeIn } from './ui';
 import { go } from './router';
 import { Scenes } from './registry';
-import { MISSIONS, makeScavenge } from '../game/missions';
+import { MISSIONS, makeScavenge, missionsIn } from '../game/missions';
+import { BIOMES, BIOME_ORDER, type BiomeId, type Biome } from '../game/biomes';
 import type { MissionSpec } from '../game/types';
 import { resourceBar, drawMenuBalloon, canAfford } from './common';
 import { UPGRADES } from '../game/upgrades';
 import { drawItemIcon } from '../game/entities';
 import { drawRotate } from './play';
 
-let mapArt: { c: HTMLCanvasElement; w: number; h: number } | null = null;
+let mapArt: { c: HTMLCanvasElement; w: number; h: number; id: string } | null = null;
+export const CAMPS: Record<BiomeId, string> = { city: 'HAVEN', dust: 'CARAVAN', flood: 'FERRY RAFT', green: 'GREENHOUSE', frozen: 'STATION', ash: 'FORWARD CAMP' };
+const SHORT: Record<BiomeId, string> = { city: 'CITY', dust: 'DUST', flood: 'FLOOD', green: 'GREEN', frozen: 'FROZEN', ash: 'ASH' };
+export const regionUnlocked = (b: Biome) => !b.requires || !!Save.data.missions[b.requires]?.done;
 
-function paintMap(w: number, h: number) {
+function paintMap(w: number, h: number, b: Biome) {
   const [c, x] = makeCanvas(w, h);
   const rng = new RNG(808);
   // parchment base
   x.fillStyle = P.parchment; x.fillRect(0, 0, w, h);
   for (let i = 0; i < 120; i++) daub(x, rng.range(0, w), rng.range(0, h), rng.range(20, 70), rng.chance(0.5) ? P.parchmentDark : '#f6e8c8', 0.25, i);
   x.fillStyle = x.createPattern(grain(), 'repeat')!; x.globalAlpha = 0.8; x.fillRect(0, 0, w, h); x.globalAlpha = 1;
+  x.fillStyle = b.mapTint; x.fillRect(0, 0, w, h);
   pen.use(x, 0);
   // river
   x.strokeStyle = 'rgba(63,127,134,0.55)'; x.lineWidth = 22; x.lineCap = 'round';
@@ -39,17 +44,18 @@ function paintMap(w: number, h: number) {
   x.strokeStyle = 'rgba(42,26,20,0.35)'; x.lineWidth = 3; x.setLineDash([2, 6]);
   for (let i = 0; i < 6; i++) { x.beginPath(); x.moveTo(rng.range(0, w), 0); x.quadraticCurveTo(rng.range(0, w), h / 2, rng.range(0, w), h); x.stroke(); }
   x.setLineDash([]);
-  // fog of war regions (other biomes) along the edges
-  const regions = [
-    { name: 'THE DUSTLANDS', x: w * 0.93, y: h * 0.2, col: 'rgba(196,132,29,0.35)' },
-    { name: 'THE FLOOD', x: w * 0.92, y: h * 0.82, col: 'rgba(63,127,134,0.35)' },
-    { name: 'THE GREEN', x: w * 0.06, y: h * 0.2, col: 'rgba(122,127,58,0.35)' },
-  ];
-  for (const r of regions) {
-    for (let i = 0; i < 26; i++) daub(x, r.x + rng.range(-90, 90), r.y + rng.range(-70, 70), rng.range(26, 50), r.col.replace('0.35', '0.5'), 0.3, i + 99);
-    x.save(); x.translate(r.x, r.y); x.rotate(-0.08);
-    x.font = '17px "Luckiest Guy"'; x.textAlign = 'center'; x.fillStyle = 'rgba(42,26,20,0.55)'; x.fillText(r.name, 0, 0);
-    x.font = '13px "Patrick Hand"'; x.fillText('beyond the storm wall', 0, 16);
+  // region doodles
+  for (let i = 0; i < 26; i++) {
+    const dx = rng.range(30, w - 30), dy = rng.range(60, h - 30);
+    x.save(); x.translate(dx, dy); x.strokeStyle = 'rgba(42,26,20,0.45)'; x.fillStyle = 'rgba(42,26,20,0.25)'; x.lineWidth = 1.5;
+    switch (b.id) {
+      case 'dust': x.beginPath(); x.moveTo(-18, 0); x.quadraticCurveTo(0, -12, 18, 0); x.stroke(); break;
+      case 'flood': x.beginPath(); x.moveTo(-14, 0); x.quadraticCurveTo(-7, -5, 0, 0); x.quadraticCurveTo(7, 5, 14, 0); x.stroke(); break;
+      case 'green': x.fillStyle = 'rgba(80,120,40,0.4)'; x.beginPath(); x.arc(0, 0, 8, 0, 7); x.arc(8, 4, 6, 0, 7); x.fill(); break;
+      case 'frozen': x.beginPath(); for (let k = 0; k < 3; k++) { x.rotate(Math.PI / 3); x.moveTo(-7, 0); x.lineTo(7, 0); } x.stroke(); break;
+      case 'ash': x.fillStyle = 'rgba(160,60,30,0.4)'; x.beginPath(); x.moveTo(-12, 6); x.lineTo(0, -12); x.lineTo(12, 6); x.fill(); break;
+      default: break;
+    }
     x.restore();
   }
   // compass rose
@@ -61,7 +67,7 @@ function paintMap(w: number, h: number) {
   x.font = '14px "Luckiest Guy"'; x.textAlign = 'center'; x.fillText('N', 0, -40);
   x.restore();
   // title
-  x.font = '30px "Luckiest Guy"'; x.textAlign = 'center'; x.fillStyle = 'rgba(42,26,20,0.75)'; x.fillText('THE DEAD CITY', w * 0.5, 40);
+  x.font = '30px "Luckiest Guy"'; x.textAlign = 'center'; x.fillStyle = 'rgba(42,26,20,0.75)'; x.fillText(b.name.toUpperCase(), w * 0.5, 40);
   // border
   x.strokeStyle = P.ink; x.lineWidth = 4; x.strokeRect(6, 6, w - 12, h - 12);
   x.strokeStyle = 'rgba(42,26,20,0.4)'; x.lineWidth = 1.5; x.strokeRect(14, 14, w - 28, h - 28);
@@ -71,15 +77,28 @@ function paintMap(w: number, h: number) {
 export class MapScene implements Scene {
   t = 0; sel = 0; balloonX = 0; balloonY = 0; selT = 0;
   list: MissionSpec[] = [];
-  enter() {
-    this.t = 0; Audio.playSong('haven');
-    this.list = [...MISSIONS, makeScavenge(Date.now() % 100000)];
-    // auto-select first incomplete unlocked mission
+  region: BiomeId = 'city'; introT = 0;
+  setRegion(id: BiomeId) {
+    this.region = id;
+    const b = BIOMES[id];
+    const first = missionsIn(id)[0];
+    const scav = makeScavenge(Date.now() % 100000, id);
+    scav.requires = first.id;
+    this.list = [...missionsIn(id), scav];
     const s = Save.data;
     const idx = this.list.findIndex((m) => this.unlocked(m) && !s.missions[m.id]?.done && !m.free);
-    this.sel = idx >= 0 ? idx : 0;
-    const pos = this.nodePos(this.list[this.sel]);
-    this.balloonX = pos.x; this.balloonY = pos.y;
+    this.sel = idx >= 0 ? idx : 0; this.selT = 0;
+    const pos = this.nodePos(this.list[this.sel]); this.balloonX = pos.x; this.balloonY = pos.y - 60;
+    if (!s.seenRegions.includes(id) && b.intro) { this.introT = 0.001; }
+    Audio.playSong(id === 'city' ? 'haven' : b.music);
+  }
+  enter() {
+    this.t = 0; Audio.playSong('haven');
+    // open the furthest unlocked region
+    const open = BIOME_ORDER.filter((id) => regionUnlocked(BIOMES[id]));
+    const s = Save.data;
+    const pick = open.find((id) => missionsIn(id).some((m) => !s.missions[m.id]?.done)) ?? open[open.length - 1];
+    this.setRegion(pick);
   }
   unlocked(m: MissionSpec) { return !m.requires || !!Save.data.missions[m.requires]?.done; }
   mapRect() {
@@ -102,7 +121,7 @@ export class MapScene implements Scene {
     // wood desk texture
     for (let y = 0; y < H; y += 28) { ctx.fillStyle = y % 56 ? '#43301f' : '#3a2a1c'; ctx.fillRect(0, y, W, 28); ctx.fillStyle = 'rgba(0,0,0,0.15)'; ctx.fillRect(0, y + 26, W, 2); }
     const r = this.mapRect();
-    if (!mapArt || mapArt.w !== Math.round(r.w) || mapArt.h !== Math.round(r.h)) mapArt = paintMap(Math.round(r.w), Math.round(r.h));
+    if (!mapArt || mapArt.w !== Math.round(r.w) || mapArt.h !== Math.round(r.h) || mapArt.id !== this.region) mapArt = { ...paintMap(Math.round(r.w), Math.round(r.h), BIOMES[this.region]), id: this.region };
     ctx.save(); ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.fillRect(r.x + 8, r.y + 10, r.w, r.h); ctx.restore();
     ctx.drawImage(mapArt.c, r.x, r.y);
     // Haven settlement (garage)
@@ -111,12 +130,12 @@ export class MapScene implements Scene {
     // route lines
     ctx.strokeStyle = P.redDark; ctx.lineWidth = 3; ctx.setLineDash([8, 7]); ctx.lineDashOffset = -this.t * 12;
     ctx.beginPath(); ctx.moveTo(hv.x, hv.y);
-    for (const m of MISSIONS) { if (!this.unlocked(m)) break; const p = this.nodePos(m); ctx.lineTo(p.x, p.y); }
+    for (const m of this.list) { if (m.free || !this.unlocked(m)) break; const p = this.nodePos(m); ctx.lineTo(p.x, p.y); }
     ctx.stroke(); ctx.setLineDash([]);
     // haven icon
     pen.begin().m(hv.x - 22, hv.y + 8).l(hv.x - 22, hv.y - 10).l(hv.x, hv.y - 26).l(hv.x + 22, hv.y - 10).l(hv.x + 22, hv.y + 8).close().ink(P.orange, 2.5);
     pen.begin().rect(hv.x - 6, hv.y - 4, 12, 12).ink(P.brownDark, 2);
-    inkText(ctx, 'HAVEN', hv.x, hv.y + 22, 15, P.parchment, { outline: 3 });
+    inkText(ctx, CAMPS[this.region], hv.x, hv.y + 22, 15, P.parchment, { outline: 3 });
     // nodes
     this.list.forEach((m, i) => {
       const p = this.nodePos(m); const un = this.unlocked(m); const rec = s.missions[m.id];
@@ -141,6 +160,13 @@ export class MapScene implements Scene {
     });
     // balloon marker
     drawMenuBalloon(ctx, this.balloonX, this.balloonY + Math.sin(this.t * 2) * 4, 0.28, this.t, { burner: Math.sin(this.t * 2) > 0 ? 0.7 : 0 });
+    // ---------- region tabs ----------
+    const tw = Math.min(118, (r.w - 24) / BIOME_ORDER.length);
+    BIOME_ORDER.forEach((id, i) => {
+      const b = BIOMES[id]; const un = regionUnlocked(b); const on = id === this.region;
+      const done = missionsIn(id).every((m) => s.missions[m.id]?.done);
+      UI.button(ctx, 'reg' + id, r.x + 12 + i * tw, r.y + r.h - 46, tw - 6, 36, un ? SHORT[id] + (done ? ' ✓' : '') : '🔒', () => { if (un) { this.setRegion(id); Audio.click(); } else Audio.deny(); }, { style: on ? 'red' : un ? 'paper' : 'ghost', size: tw < 90 ? 12 : 15 });
+    });
     // ---------- mission card ----------
     const m = this.list[this.sel];
     const cx = W - r.cardW - 12 - Engine.safe.r, cy = 62, cw = r.cardW, ch = H - 74;
@@ -192,8 +218,25 @@ export class MapScene implements Scene {
       pen.begin().m(gx - 12, gy - 2).l(gx + 2, gy - 2).stroke(5, P.ink); pen.begin().m(gx - 12, gy - 2).l(gx + 1, gy - 2).stroke(3, P.glove);
     }
     UI.button(ctx, 'home', W - 58 - Engine.safe.r, 8, 46, 44, '⌂', () => go(Scenes.title), { style: 'brass', size: 22, keys: ['Escape'] });
+    if (this.introT > 0) this.drawRegionIntro(ctx, W, H);
     if (Engine.portrait) drawRotate(ctx, W, H, this.t);
     fadeIn(ctx, this.t, W, H, 0.01);
+  }
+  private drawRegionIntro(ctx: CanvasRenderingContext2D, W: number, H: number) {
+    this.introT += 1 / 60;
+    UI.begin(); // modal: only the card's button is clickable
+    const b = BIOMES[this.region];
+    ctx.fillStyle = 'rgba(20,12,8,0.65)'; ctx.fillRect(0, 0, W, H);
+    const k = easeOutBack(clamp(this.introT / 0.4, 0, 1));
+    const pw = Math.min(520, W - 60), ph = 260, px = W / 2 - pw / 2, py = H / 2 - ph / 2;
+    ctx.save(); ctx.translate(W / 2, H / 2); ctx.scale(k, k); ctx.translate(-W / 2, -H / 2);
+    panel(ctx, px, py, pw, ph, { tape: true, color: P.paper });
+    bodyText(ctx, 'NEW REGION', W / 2, py + 30, 18, P.redDark, 'center');
+    inkText(ctx, b.name.toUpperCase(), W / 2, py + 66, 38, P.orange, { outline: 6 });
+    bodyText(ctx, b.tagline, W / 2, py + 98, 18, P.inkSoft, 'center');
+    wrapText(ctx, b.intro, pw - 50, 17).forEach((l, i) => bodyText(ctx, l, W / 2, py + 130 + i * 20, 17, P.ink, 'center'));
+    UI.button(ctx, 'introok', W / 2 - 90, py + ph - 62, 180, 48, 'LET\'S FLY!', () => { this.introT = 0; if (!Save.data.seenRegions.includes(this.region)) { Save.data.seenRegions.push(this.region); Save.write(); } }, { style: 'red', size: 22, keys: ['Enter', 'Escape'] });
+    ctx.restore();
   }
 }
 

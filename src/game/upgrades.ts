@@ -18,6 +18,7 @@ export const UPGRADES: UpgradeDef[] = [
   { id: 'envelope', cat: 'balloon', name: 'Reinforced Envelope', desc: ['+1 max patch (health). Stitched leather straps.', '+1 more patch. Full rope netting.'], costs: [{ fabric: 6, scrap: 8 }, { fabric: 14, scrap: 20 }] },
   { id: 'lift', cat: 'balloon', name: 'Bigger Bag', desc: ['Larger envelope: faster climb, carries heavier cargo.', 'Even bigger! Shrugs off heavy loads.'], costs: [{ fabric: 8, scrap: 6 }, { fabric: 18, scrap: 16 }] },
   { id: 'fins', cat: 'balloon', name: 'Tail Fins', desc: ['Fabric fins: wind gusts push you 50% less, steadier turns.'], costs: [{ fabric: 6, scrap: 10 }] },
+  { id: 'heater', cat: 'balloon', name: 'Envelope Heater', desc: ['Warm coils in the bag: no icing at high altitude in the Frozen Reach.'], costs: [{ scrap: 20, electronics: 4, fabric: 8 }] },
   { id: 'buoy', cat: 'balloon', name: 'Emergency Buoyancy', desc: ['Once per sortie, survive a fatal hit: a reserve bladder pops and you bounce skyward.'], costs: [{ fabric: 10, scrap: 12, electronics: 2 }] },
   // PROPULSION
   { id: 'burner', cat: 'propulsion', name: 'Improved Burner', desc: ['Hotter flame: stronger lift, faster ignition.', 'Twin burners! Big lift, 25% less fuel burn.', 'Triple-jet burner. Roars like a lion.'], costs: [{ scrap: 10, fuel: 6 }, { scrap: 22, fuel: 12 }, { scrap: 40, fuel: 20, electronics: 3 }] },
@@ -32,6 +33,7 @@ export const UPGRADES: UpgradeDef[] = [
   // DEFENSE
   { id: 'plating', cat: 'defense', name: 'Basket Plating', desc: ['Riveted plates: 25% chance to deflect a hit.', 'Full armor: 45% deflect chance.'], costs: [{ scrap: 16 }, { scrap: 34, electronics: 2 }] },
   { id: 'bucket', cat: 'defense', name: 'Fire Bucket', desc: ['Immune to soot plumes & sparks only sting briefly. Shorter invulnerability gaps.'], costs: [{ scrap: 8, water: 4 }] },
+  { id: 'pontoons', cat: 'defense', name: 'Pontoons', desc: ['Floats under the basket: land on water safely, no soaking in the Flood.'], costs: [{ scrap: 16, fabric: 10, water: 2 }] },
   { id: 'patchkit', cat: 'defense', name: 'Patch Kit', desc: ['Slowly self-repair 1 patch every 30s in flight.'], costs: [{ fabric: 12, scrap: 10, food: 2 }] },
   // FIREPOWER
   { id: 'rack', cat: 'firepower', name: 'Bomb Rack', desc: ['+2 bomb capacity.', '+4 bomb capacity total.'], costs: [{ scrap: 8 }, { scrap: 20 }] },
@@ -46,7 +48,7 @@ export interface Stats {
   maxHp: number; liftMul: number; cargoTolerance: number; windMul: number; buoy: boolean;
   burnerPower: number; burnerEfficiency: number; burners: number; propSpeed: number; boost: number; fuelCap: number;
   ropeLen: number; winchSpeed: number; magnet: boolean; cargoCap: number;
-  deflect: number; bucket: boolean; patchKit: boolean;
+  deflect: number; bucket: boolean; patchKit: boolean; pontoons: boolean; heater: boolean;
   bombCap: number; reloadTime: number; blastMul: number; cluster: boolean;
   envelopeScale: number;
 }
@@ -72,6 +74,8 @@ export function computeStats(levels: Record<string, number>): Stats {
     deflect: [0, 0.25, 0.45][L('plating')],
     bucket: L('bucket') > 0,
     patchKit: L('patchkit') > 0,
+    pontoons: L('pontoons') > 0,
+    heater: L('heater') > 0,
     bombCap: 3 + 2 * L('rack'),
     reloadTime: 2.6 * [1, 0.65, 0.35][L('reload')],
     blastMul: 1 + 0.3 * L('blast'),

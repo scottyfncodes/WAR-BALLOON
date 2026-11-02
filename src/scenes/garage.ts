@@ -170,21 +170,21 @@ export class GarageScene implements Scene {
   private drawPaints(ctx: CanvasRenderingContext2D, x: number, y: number, w: number) {
     const s = Save.data;
     bodyText(ctx, 'Cosmetic paint jobs — earned on your travels.', x + w / 2, y + 4, 15, P.inkSoft, 'center');
-    const req: Record<string, string> = { classic: 'Jerry\'s original', teal: 'Complete "Scrap Happy"', sunset: 'Find 3 lost postcards', storm: 'Defeat Big Bertha' };
-    const cw = (w - 36) / 2, ch = 140;
+    const req: Record<string, string> = { classic: 'Jerry\'s original', teal: 'Complete "Scrap Happy"', sunset: 'Find 3 lost postcards', storm: 'Defeat Big Bertha', dune: 'Beat the Dune Dredger', sea: 'Sink Old Salty', ivy: 'Dethrone the Bramble King', glacier: 'Shatter the Icebreaker', ember: 'Defeat the Scrap Baron' };
+    const cols = 3, cw = (w - 24 - (cols - 1) * 8) / cols, ch = 128;
     PAINTS.forEach((p, i) => {
-      const cx = x + 12 + (i % 2) * (cw + 12), cy = y + 18 + Math.floor(i / 2) * (ch + 10);
+      const cx = x + 12 + (i % cols) * (cw + 8), cy = y + 16 + Math.floor(i / cols) * (ch + 6);
       const owned = s.paintsUnlocked.includes(p.id);
       const on = s.paint === p.id;
       pen.use(ctx, 0.5);
       pen.begin().rrect(cx, cy, cw, ch, 8).ink(on ? '#f3e2a5' : P.paper, on ? 3.5 : 2.4);
       ctx.save(); ctx.beginPath(); ctx.rect(cx, cy, cw, ch); ctx.clip();
-      drawMenuBalloon(ctx, cx + 52, cy + ch - 18, 0.42, this.t + i, { paint: p.id, flash: !owned });
+      drawMenuBalloon(ctx, cx + 36, cy + ch - 12, 0.36, this.t + i, { paint: p.id, flash: !owned });
       ctx.restore();
-      inkText(ctx, p.name.toUpperCase(), cx + 100, cy + 22, 15, P.ink, { align: 'left', outline: 0, shadow: false });
-      const ls = wrapText(ctx, owned ? (on ? 'Currently flying' : 'Unlocked') : 'Locked: ' + req[p.id], cw - 108, 14);
-      ls.forEach((l, k) => bodyText(ctx, l, cx + 100, cy + 44 + k * 15, 14, owned ? P.oliveDark : P.redDark));
-      if (owned && !on) UI.button(ctx, 'paint' + p.id, cx + 100, cy + ch - 48, cw - 112, 38, 'PAINT IT', () => { s.paint = p.id; Save.write(); Audio.buy(); this.celebrate = 1.2; this.lastBought = p.name; }, { style: 'teal', size: 15 });
+      inkText(ctx, p.name.toUpperCase(), cx + 72, cy + 20, 13, P.ink, { align: 'left', outline: 0, shadow: false });
+      const ls = wrapText(ctx, owned ? (on ? 'Currently flying' : 'Unlocked') : req[p.id], cw - 78, 13);
+      ls.slice(0, 3).forEach((l, k) => bodyText(ctx, l, cx + 72, cy + 40 + k * 14, 13, owned ? P.oliveDark : P.redDark));
+      if (owned && !on) UI.button(ctx, 'paint' + p.id, cx + 70, cy + ch - 42, cw - 78, 34, 'PAINT', () => { s.paint = p.id; Save.write(); Audio.buy(); this.celebrate = 1.2; this.lastBought = p.name; }, { style: 'teal', size: 15 });
     });
     void clamp; void easeOutBack;
   }

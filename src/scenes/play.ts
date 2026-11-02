@@ -10,7 +10,7 @@ import { computeStats } from '../game/upgrades';
 import { drawItemIcon, POWER_INFO } from '../game/entities';
 import type { Controls } from '../game/player';
 import type { MissionSpec } from '../game/types';
-import { drawBackdrop, drawPost } from './backdrop';
+import { drawBackdrop, drawPost, drawAmbient } from './backdrop';
 import { TouchControls } from './touch';
 import { UI, panel, ribbon, fadeIn } from './ui';
 import { go } from './router';
@@ -60,11 +60,13 @@ export class PlayScene implements Scene {
     const W = Engine.W, H = Engine.H, w = this.w;
     const shake = w.fx.shake;
     const sx = (Math.random() - 0.5) * shake, sy = (Math.random() - 0.5) * shake;
-    drawBackdrop(ctx, W, H, w.camX, w.camY, w.time);
+    drawBackdrop(ctx, W, H, w.camX, w.camY, w.time, { biome: w.biome });
     ctx.save();
     ctx.translate(-Math.round(w.camX) + sx, -Math.round(w.camY) + sy);
     w.drawWorld(ctx);
     ctx.restore();
+    drawAmbient(ctx, W, H, w.biome, w.time, w.camX, w.stormLevel, w.wind);
+    if (w.stormLevel > 1.2) { ctx.fillStyle = w.biome.id === 'frozen' ? `rgba(240,245,250,${(w.stormLevel - 1) * 0.12})` : `rgba(220,170,100,${(w.stormLevel - 1) * 0.14})`; ctx.fillRect(0, 0, W, H); }
     if (w.fx.flash > 0) { ctx.fillStyle = `rgba(226,73,58,${w.fx.flash * 0.35})`; ctx.fillRect(0, 0, W, H); }
     drawPost(ctx, W, H, w.time);
     w.boss?.drawIntro(ctx, W, H);
@@ -98,6 +100,7 @@ export class PlayScene implements Scene {
     pen.begin().m(gx, gy).l(gx + Math.cos(na) * (gr - 6), gy + Math.sin(na) * (gr - 6)).stroke(3, P.red);
     pen.begin().ell(gx, gy, 4, 4).ink(P.brass, 1.5);
     bodyText(ctx, 'FUEL', gx, gy + 14, 11, P.ink, 'center');
+    if (p.ice > 0.3) { ctx.fillStyle = `rgba(200,230,245,${0.4 + p.ice * 0.4})`; ctx.fillRect(gx - 30, gy + 30, 60 * p.ice, 4); if (Math.sin(w.time * 6) > 0) inkText(ctx, 'ICING!', gx + 60, T + 92, 13, P.tealLight, { outline: 3 }); }
     if (fk < 0.2 && Math.sin(w.time * 10) > 0) inkText(ctx, p.fuel <= 0 ? 'EMPTY!' : 'LOW FUEL', gx + 2, T + 92, 13, P.redBright, { outline: 3 });
     // patches (hp)
     bodyText(ctx, 'PATCHES', L + 78, T + 18, 13, P.parchment);
@@ -159,7 +162,7 @@ export class PlayScene implements Scene {
       });
       if (w.exitReady && w.state === 'play' && objs.some((o) => !o.spec.optional)) {
         const k = 0.5 + 0.5 * Math.sin(w.time * 5);
-        inkText(ctx, 'RETURN TO HAVEN →', ox + ow / 2, oy + 30 + lines.length * 19, 16, k > 0.5 ? P.goldLight : P.gold, { outline: 3 });
+        inkText(ctx, 'HEAD HOME →', ox + ow / 2, oy + 30 + lines.length * 19, 16, k > 0.5 ? P.goldLight : P.gold, { outline: 3 });
       }
     }
     // ---------- pause button ----------

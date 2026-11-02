@@ -4,7 +4,9 @@ import { clamp, dist, rand, pick, RNG, damp } from '../core/math';
 import { Audio } from '../core/audio';
 import { Terrain, GROUND, CEILING } from './level';
 import { Player, type Controls } from './player';
-import { Item, PowerUp, Target, Enemy, Projectile, Bomb, PowerLine, Smokestack, Gust, POWER_INFO, ITEM_INFO } from './entities';
+import { Item, PowerUp, Target, Enemy, Projectile, Bomb, PowerLine, Smokestack, Gust, Storm, POWER_INFO, ITEM_INFO } from './entities';
+import { biome as getBiome, CAMP_NAMES, type Biome } from './biomes';
+import { BOSSES } from './boss';
 import { Boss } from './boss';
 import { FX } from './fx';
 import type { MissionSpec, ObjectiveSpec, ItemKind, PowerKind, EnemyKind, TargetKind, EntSpec } from './types';
@@ -20,6 +22,9 @@ export class World {
   items: Item[] = []; powerups: PowerUp[] = []; targets: Target[] = []; enemies: Enemy[] = [];
   projectiles: Projectile[] = []; bombs: Bomb[] = []; lines: PowerLine[] = []; stacks: Smokestack[] = []; gusts: Gust[] = [];
   boss: Boss | null = null;
+  storms: Storm[] = [];
+  biome: Biome;
+  stormLevel = 1;
   exitX: number;
   fx = new FX();
   camX = 0; camY = 0; viewW = 960; viewH = 540;
@@ -34,15 +39,19 @@ export class World {
   exitReady = false; exitNagT = 0;
   bombsDropped = 0; hookedCount = 0; kills = 0;
   bossArena: [number, number] | null = null;
+  ventSpecs: number[] = [];
   constructor(spec: MissionSpec, stats: Stats, levels: Record<string, number>, paint: string, provisions: boolean) {
     this.spec = spec;
     this.length = spec.length;
     this.wind = spec.wind;
-    this.terrain = new Terrain(spec.length, spec.seed, spec.buildings.map((b) => ({ ...b })));
-    const startY = this.terrain.groundY(190) - 20;
+    this.biome = getBiome(spec.biome);
+    this.terrain = new Terrain(spec.length, spec.seed, spec.buildings.map((b) => ({ ...b })), this.biome, spec.lava ?? []);
+    const startY = this.terrain.floorY(190) - 20;
     this.player = new Player(190, startY, stats, levels, paint, provisions ? 30 : 0, provisions ? 1 : 0);
     this.exitX = spec.length - 180;
     for (const e of spec.ents) this.spawn(e);
+    for (const b of this.terrain.buildings) if (b.chimney) this.stacks.push(new Smokestack(b.x + b.w / 2, b.top - 78));
+    for (const vx of this.ventSpecs) this.stacks.push(new Smokestack(vx, this.terrain.groundY(vx) - 4, true));
     this.objectives = spec.objectives.map((o) => ({ spec: o, progress: 0, done: false, failed: false }));
     this.camX = 0; this.camY = 0;
   }
@@ -61,17 +70,19 @@ export class World {
       case 'enemy': {
         const kind = e.kind as EnemyKind;
         const y = kind === 'turret' || kind === 'buggy' ? sy : sy - (e.alt ?? 250);
-        const en = new Enemy(e.x, y, kind, e.w ?? 200); en.tag = e.tag; this.enemies.push(en); break;
+        const en = new Enemy(e.x, kind === 'snapper' ? sy : y, kind, e.w ?? 200); en.tag = e.tag; en.style = this.biome.id; this.enemies.push(en); break;
       }
       case 'powerline': {
         const x2 = e.x2 as number;
         this.lines.push(new PowerLine(e.x, this.terrain.groundY(e.x) - (e.alt ?? 200), x2, this.terrain.groundY(x2) - (e.alt ?? 200)));
         break;
       }
-      case 'gust': this.gusts.push(new Gust(e.x, e.w ?? 400, e.fx ?? 0, e.fy ?? 0)); break;
+      case 'gust': this.gusts.push(new Gust(e.x, e.w ?? 400, e.fx ?? 0, e.fy ?? 0, e.style ?? 'wind')); break;
+      case 'storm': this.storms.push(new Storm(e.x, e.w ?? 500)); break;
+      case 'vent': this.ventSpecs.push(e.x); break;
       case 'boss': {
         const aw = e.w ?? 1400;
-        this.boss = new Boss(e.x + aw * 0.6, this.terrain.groundY(e.x + aw * 0.6), e.x, aw);
+        this.boss = new Boss(e.x + aw * 0.6, this.terrain.floorY(e.x + aw * 0.6), e.x, aw, BOSSES[this.spec.bossCfg ?? 'bertha']);
         this.bossArena = [e.x, e.x + aw];
         break;
       }
@@ -79,7 +90,7 @@ export class World {
       case 'exit': this.exitX = e.x; break;
     }
     // smokestacks come from chimney buildings
-    if (this.stacks.length === 0) for (const b of this.terrain.buildings) if (b.chimney) this.stacks.push(new Smokestack(b.x + b.w / 2, b.top - 78));
+
   }
 
   // ---------------------------------------------------------------- environment
@@ -187,7 +198,7 @@ export class World {
     const key = e.tag ?? e.kind;
     this.destroyed[key] = (this.destroyed[key] ?? 0) + 1;
     if (e.tag && e.tag !== e.kind) this.destroyed[e.kind] = (this.destroyed[e.kind] ?? 0) + 1;
-    const drops: Record<EnemyKind, ItemKind[]> = { buzzard: ['scrap'], turret: ['scrap', 'scrap'], buggy: ['scrap', 'fuel'], gyro: ['scrap', Math.random() < 0.4 ? 'electronics' : 'fabric'] };
+    const drops: Record<EnemyKind, ItemKind[]> = { buzzard: ['scrap'], turret: ['scrap', 'scrap'], buggy: ['scrap', 'fuel'], gyro: ['scrap', Math.random() < 0.4 ? 'electronics' : 'fabric'], mine: [], snapper: ['food', 'fabric'], moth: ['fabric'] };
     for (const k of drops[e.kind]) this.spawnDrop(e.x, e.y - 10, k);
     this.player.setExpr('happy', 0.8);
   }
@@ -229,9 +240,9 @@ export class World {
     for (const t of this.targets) t.update(this, dt);
     for (const e of this.enemies) {
       e.update(this, dt);
-      if (!e.dead && e.dying === 0 && e.active && (e.kind === 'buzzard' || e.kind === 'gyro') && p.hitTest(e.x, e.y, e.r * 0.8)) {
+      if (!e.dead && e.dying === 0 && e.active && (e.kind === 'buzzard' || e.kind === 'gyro' || e.kind === 'moth') && p.hitTest(e.x, e.y, e.r * 0.8)) {
         p.hit(this, 1, e.x, e.y, e.kind);
-        if (e.kind === 'buzzard') e.damage(this, 1, 'ram');
+        if (e.kind === 'buzzard' || e.kind === 'moth') e.damage(this, 1, 'ram');
         else { e.vx = (e.x - p.x) * 3; e.vy = -100; }
       }
     }
@@ -239,6 +250,8 @@ export class World {
     for (const b of this.bombs) b.update(this, dt);
     for (const l of this.lines) l.update(this, dt);
     for (const s of this.stacks) s.update(this, dt);
+    for (const st of this.storms) st.update(this, dt);
+    const g = this.gustAt(p.x); this.stormLevel = damp(this.stormLevel, g && g.style !== 'wind' ? 2.4 : 1, 2, dt);
     this.boss?.update(this, dt);
     this.items = this.items.filter((i) => !i.dead);
     this.powerups = this.powerups.filter((i) => !i.dead);
@@ -282,7 +295,7 @@ export class World {
     const ready = req.every((o) => o.done);
     if (ready && !this.exitReady) {
       this.exitReady = true;
-      if (req.length) this.banner('RETURN TO HAVEN!', 'Follow the flare →', P.goldLight);
+      if (req.length) this.banner('HEAD HOME!', `Fly to the ${CAMP_NAMES[this.biome.id].toLowerCase()} — follow the flare →`, P.goldLight);
     }
     this.exitNagT -= dt;
     if (Math.abs(p.x - this.exitX) < 90 && !p.dead) {
@@ -334,6 +347,7 @@ export class World {
     this.drawHaven(ctx, 70, false);
     this.drawHaven(ctx, this.exitX, true);
     this.terrain.drawGround(ctx, x0, x1);
+    this.drawWater(ctx, x0, x1);
     for (const l of this.lines) l.draw(ctx);
     this.boss?.draw(ctx);
     for (const t of this.targets) if (t.x > x0 - 60 && t.x < x1 + 60) t.draw(ctx);
@@ -343,14 +357,26 @@ export class World {
     this.player.draw(ctx, this);
     for (const b of this.bombs) b.draw(ctx);
     for (const pr of this.projectiles) pr.draw(ctx);
+    for (const st of this.storms) if (st.x + st.w > x0 && st.x < x1) st.draw(ctx, this.camY);
     this.fx.draw(ctx, 'front');
     this.fx.drawText(ctx);
+  }
+
+  /** Animated floodwater surface (The Flood). */
+  private drawWater(ctx: CanvasRenderingContext2D, x0: number, x1: number) {
+    const wy = this.biome.water; if (wy === undefined) return;
+    ctx.fillStyle = 'rgba(52,92,100,0.82)'; ctx.fillRect(x0, wy, x1 - x0, 200);
+    ctx.strokeStyle = P.ink; ctx.lineWidth = 3; ctx.beginPath();
+    for (let x = Math.floor(x0 / 12) * 12; x <= x1; x += 12) { const y = wy + Math.sin(x * 0.04 + this.time * 2) * 2.5; if (x === Math.floor(x0 / 12) * 12) ctx.moveTo(x, y); else ctx.lineTo(x, y); }
+    ctx.stroke(); ctx.strokeStyle = 'rgba(220,240,240,0.7)'; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.strokeStyle = 'rgba(220,240,240,0.35)';
+    for (let i = 0; i < 24; i++) { const x = x0 + ((i * 137 + this.time * 20) % (x1 - x0)); const y = wy + 12 + (i * 29) % 70; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + 18, y); ctx.stroke(); }
   }
 
   /** Haven landing pads: start (launch) and exit (destination). */
   private drawHaven(ctx: CanvasRenderingContext2D, x: number, exit: boolean) {
     if (x < this.camX - 200 || x > this.camX + this.viewW + 200) return;
-    const gy = this.terrain.groundY(x);
+    const gy = this.terrain.floorY(x);
     ctx.save(); ctx.translate(x, gy);
     pen.use(ctx, 0.5);
     // platform on stilts
@@ -366,7 +392,7 @@ export class World {
     // sign
     ctx.save(); ctx.translate(0, -62);
     pen.begin().rect(-40, -12, 80, 22).ink(P.parchment, 2.4);
-    ctx.font = '15px "Luckiest Guy", Impact'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = P.redDark; ctx.fillText(exit ? 'HAVEN →' : 'HAVEN', 0, 0);
+    ctx.font = '15px "Luckiest Guy", Impact'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = P.redDark; const nm = CAMP_NAMES[this.biome.id]; ctx.font = `${nm.length > 7 ? 12 : 15}px "Luckiest Guy", Impact`; ctx.fillText(exit ? nm + ' →' : nm, 0, 0);
     ctx.restore();
     pen.begin().m(-30, -50).l(-30, -44).m(30, -50).l(30, -44).stroke(2);
     if (exit) {
@@ -399,7 +425,7 @@ export class World {
   pointers(): { x: number; y: number; color: string; label: string }[] {
     const out: { x: number; y: number; color: string; label: string }[] = [];
     const add = (x: number, y: number, color: string, label: string) => { if (x < this.camX || x > this.camX + this.viewW || y < this.camY || y > this.camY + this.viewH) out.push({ x, y, color, label }); };
-    if (this.exitReady) add(this.exitX, this.terrain.groundY(this.exitX) - 80, P.gold, 'HAVEN');
+    if (this.exitReady) add(this.exitX, this.terrain.floorY(this.exitX) - 80, P.gold, 'HOME');
     for (const t of this.targets) if (t.marked) add(t.x, t.y - 30, P.redBright, '!');
     for (const it of this.items) if (it.tag || it.kind === 'survivor') add(it.x, it.y, P.goldLight, it.kind === 'survivor' ? 'SOS' : '!');
     if (this.boss && !this.boss.started) add(this.boss.x, this.boss.y - 100, P.redBright, '☠');

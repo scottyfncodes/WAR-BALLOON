@@ -11,6 +11,11 @@ export const PAINTS: PaintScheme[] = [
   { id: 'teal', name: 'Teal Diamond', a: P.teal, b: P.parchment, aShade: P.tealDark, bShade: P.parchmentShade, pattern: 'diamonds', trim: P.gold },
   { id: 'sunset', name: 'Sunset Checks', a: P.gold, b: P.red, aShade: P.goldDark, bShade: P.redDark, pattern: 'checks', trim: P.orangeDark },
   { id: 'storm', name: 'Storm Crown', a: P.purple, b: P.gold, aShade: P.purpleDark, bShade: P.goldDark, pattern: 'crown', trim: P.teal },
+  { id: 'dune', name: 'Desert Camo', a: '#c8a066', b: '#8a7a4a', aShade: '#a07a48', bShade: '#6a5e38', pattern: 'checks', trim: P.rust },
+  { id: 'sea', name: 'Sea Stripe', a: P.white, b: '#2f5f8a', aShade: P.parchmentShade, bShade: '#1f4466', pattern: 'stripes', trim: P.red },
+  { id: 'ivy', name: 'Ivy League', a: P.olive, b: '#e8e0a0', aShade: P.oliveDark, bShade: '#c0b878', pattern: 'diamonds', trim: '#4f7a2a' },
+  { id: 'glacier', name: 'Glacier', a: '#a8d0e6', b: P.white, aShade: '#7aa8c4', bShade: '#d0dce4', pattern: 'crown', trim: '#5a7a9a' },
+  { id: 'ember', name: 'Ember King', a: '#2e2626', b: P.flame3, aShade: '#1a1414', bShade: '#a8301a', pattern: 'stripes', trim: P.gold },
 ];
 export const paintById = (id: string) => PAINTS.find((p) => p.id === id) ?? PAINTS[0];
 
@@ -39,6 +44,7 @@ export interface BalloonLook {
   zap?: number;
   inflate?: number; // 0 = flat on the ground, 1 = full
   dizzy?: boolean;
+  ice?: number;
 }
 
 export const ENVELOPE_TOP = -228, MOUTH_Y = -92;
@@ -153,6 +159,13 @@ export function drawBalloon(ctx: CanvasRenderingContext2D, b: BalloonLook, amp =
       ctx.beginPath(); ctx.moveTo(px - 8, py - 3); ctx.lineTo(px - 2, py - 7); ctx.lineTo(px + 1, py - 2); ctx.lineTo(px + 8, py - 5); ctx.lineTo(px + 5, py + 4); ctx.lineTo(px - 3, py + 6); ctx.closePath(); ctx.fill();
       ctx.strokeStyle = P.parchment; ctx.lineWidth = 1;
       ctx.beginPath(); ctx.moveTo(px - 10, py - 1); ctx.lineTo(px - 6, py + 3); ctx.moveTo(px + 6, py - 8); ctx.lineTo(px + 10, py - 3); ctx.stroke();
+    }
+    if ((b.ice ?? 0) > 0.05) {
+      const k = b.ice!;
+      ctx.fillStyle = `rgba(225,240,250,${0.25 + k * 0.45})`;
+      ctx.fillRect(-rx * 1.3, top - 10, rx * 2.6, (bot - top) * (0.35 + k * 0.5));
+      ctx.strokeStyle = `rgba(255,255,255,${0.5 + k * 0.4})`; ctx.lineWidth = 1.5;
+      for (let i = -3; i <= 3; i++) { const fx = i * rx * 0.28, fy = yAt(0.2 + Math.abs(i) * 0.05); ctx.beginPath(); ctx.moveTo(fx, fy); ctx.lineTo(fx + 6, fy + 8); ctx.moveTo(fx + 6, fy); ctx.lineTo(fx, fy + 8); ctx.stroke(); }
     }
     // stitched patch (character)
     ctx.save(); ctx.translate(rx * 0.3, yAt(0.72)); ctx.rotate(0.2);
@@ -284,6 +297,9 @@ export function drawBalloon(ctx: CanvasRenderingContext2D, b: BalloonLook, amp =
     for (let i = -3; i <= 3; i++) { ctx.beginPath(); ctx.moveTo(i * 7, bh); ctx.lineTo(i * 5, bh + 14 + L('net') * 3 - Math.abs(i)); ctx.stroke(); }
   }
 
+  if ((b.ice ?? 0) > 0.3) for (let i = -2; i <= 2; i++) pen.begin().m(i * 9 - 3, bh).l(i * 9, bh + 6 + (b.ice ?? 0) * 10).l(i * 9 + 3, bh).close().ink('#d8eef6', 1.2);
+  if (L('pontoons')) for (const sx of [-1, 1]) { pen.begin().rrect(sx * 30 - 12, bh - 10, 24, 12, 6).ink(P.red, 2.2); pen.begin().m(sx * 30 - 12, bh - 4).l(sx * 30 + 12, bh - 4).stroke(1.2, P.parchment); }
+  if (L('heater')) { pen.begin().m(-8, MOUTH_Y + 2).q(0, MOUTH_Y - 8, 8, MOUTH_Y + 2).stroke(3, P.hot); }
   // shield bubble
   if (b.shield) {
     ctx.save(); ctx.globalAlpha = 0.5 + 0.15 * Math.sin(b.t * 8);

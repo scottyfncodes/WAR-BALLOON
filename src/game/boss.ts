@@ -7,6 +7,16 @@ import { Projectile, Enemy } from './entities';
 
 interface Valve { ox: number; hp: number; flash: number; }
 
+export interface BossCfg { id: string; name: string; short: string; sub: string; hull: string; cab: string; arm: string; ball: 'ball' | 'anchor' | 'drill' | 'ice' | 'fire'; ship?: boolean; mortar: 'junk' | 'snow'; summon: 'buzzard' | 'moth'; speed: number; valveHp: number; }
+export const BOSSES: Record<string, BossCfg> = {
+  bertha: { id: 'bertha', name: 'BIG BERTHA', short: 'BIG BERTHA', sub: 'the Scrap Baron\'s crane-tank', hull: P.rust, cab: P.olive, arm: P.gold, ball: 'ball', mortar: 'junk', summon: 'buzzard', speed: 1, valveHp: 2 },
+  dredger: { id: 'dredger', name: 'THE DUNE DREDGER', short: 'DREDGER', sub: 'eats sand, spits scrap', hull: '#c08a52', cab: P.teal, arm: P.red, ball: 'drill', mortar: 'junk', summon: 'buzzard', speed: 1.2, valveHp: 2 },
+  salty: { id: 'salty', name: 'OLD SALTY', short: 'OLD SALTY', sub: 'a paddle-steamer with a grudge', hull: '#4f6670', cab: P.parchment, arm: P.steel, ball: 'anchor', ship: true, mortar: 'junk', summon: 'buzzard', speed: 1.1, valveHp: 3 },
+  bramble: { id: 'bramble', name: 'THE BRAMBLE KING', short: 'BRAMBLE KING', sub: 'a lawnmower that grew a crown', hull: '#5a6e3a', cab: '#8a5a2b', arm: '#4f7a2a', ball: 'ball', mortar: 'junk', summon: 'moth', speed: 1.25, valveHp: 3 },
+  icebreaker: { id: 'icebreaker', name: 'THE ICEBREAKER', short: 'ICEBREAKER', sub: 'cracks glaciers for breakfast', hull: '#6a7a8a', cab: P.red, arm: '#dfe6ee', ball: 'ice', mortar: 'snow', summon: 'buzzard', speed: 1.3, valveHp: 3 },
+  furnace: { id: 'furnace', name: 'THE IRON FURNACE', short: 'IRON FURNACE', sub: 'the Scrap Baron\'s last stand', hull: '#3a3030', cab: '#7a2a1a', arm: '#c4841d', ball: 'fire', mortar: 'junk', summon: 'buzzard', speed: 1.45, valveHp: 4 },
+};
+
 /** BIG BERTHA — the Scrap Baron's crane-tank. Bomb her three pressure valves. */
 export class Boss {
   x: number; y: number; arenaX: number; arenaW: number;
@@ -16,7 +26,8 @@ export class Boss {
   ang = 0.4; angV = 0; chain = 170; ballX = 0; ballY = 0; ballR = 26;
   armSwing = 0;
   mortarCd = 3; summonCd = 8; hitFlash = 0; stompT = 0;
-  constructor(x: number, groundY: number, arenaX: number, arenaW: number) { this.x = x; this.y = groundY; this.arenaX = arenaX; this.arenaW = arenaW; }
+  cfg: BossCfg;
+  constructor(x: number, groundY: number, arenaX: number, arenaW: number, cfg: BossCfg = BOSSES.bertha) { this.x = x; this.y = groundY; this.arenaX = arenaX; this.arenaW = arenaW; this.cfg = cfg; this.valves.forEach((v) => (v.hp = cfg.valveHp)); }
   get alive() { return this.valves.filter((v) => v.hp > 0).length; }
   get phase() { return 3 - this.alive + 1; }
   armTip() { const f = this.dir; return { x: this.x + f * 60 + Math.sin(this.armSwing) * 20, y: this.y - 300 }; }
@@ -37,12 +48,12 @@ export class Boss {
     if (!this.started) return;
     this.intro = Math.max(0, this.intro - dt);
     // movement: patrol toward player-ish
-    const speed = 30 + this.phase * 18;
+    const speed = (30 + this.phase * 18) * this.cfg.speed;
     const want = clamp(p.x, this.arenaX + 160, this.arenaX + this.arenaW - 160);
     if (Math.abs(want - this.x) > 40) this.dir = want > this.x ? 1 : -1;
     this.x += this.dir * speed * dt * (this.intro > 0 ? 0 : 1);
     this.x = clamp(this.x, this.arenaX + 150, this.arenaX + this.arenaW - 150);
-    this.y = w.terrain.groundY(this.x);
+    this.y = w.terrain.floorY(this.x) + (this.cfg.ship ? 10 + Math.sin(this.t * 1.5) * 4 : 0);
     this.stompT += dt * speed * 0.1;
     // pendulum: pump toward player
     const tip = this.armTip();
@@ -66,15 +77,15 @@ export class Boss {
         const sx = this.x - this.dir * 50, sy = this.y - 190;
         const T = 1.2, gg = 380;
         const tx = p.x + p.vx * T, ty = p.y - 60;
-        w.projectiles.push(new Projectile(sx, sy, (tx - sx) / T, (ty - sy - 0.5 * gg * T * T) / T, 'junk', 4));
+        w.projectiles.push(new Projectile(sx, sy, (tx - sx) / T, (ty - sy - 0.5 * gg * T * T) / T, this.cfg.mortar, 4));
         w.fx.puff(sx, sy, 6, '#2f2624', 12); Audio.thump(); Audio.puff();
       }
     }
     if (this.phase >= 3) {
       this.summonCd -= dt;
-      if (this.summonCd <= 0 && w.enemies.filter((e) => !e.dead && e.kind === 'buzzard').length < 2) {
+      if (this.summonCd <= 0 && w.enemies.filter((e) => !e.dead && e.kind === this.cfg.summon).length < 2) {
         this.summonCd = 9;
-        const e = new Enemy(this.x, this.y - 220, 'buzzard'); e.active = true; e.state = 'approach'; w.enemies.push(e);
+        const e = new Enemy(this.x, this.y - 220, this.cfg.summon); e.active = true; e.state = 'approach'; w.enemies.push(e);
         Audio.squawk(); w.fx.burst(this.x, this.y - 240, 'SQUAWK!', 20);
       }
     }
@@ -136,22 +147,28 @@ export class Boss {
     const tip = this.armTip();
     const ax = tip.x - this.x, ay = tip.y - this.y;
     pen.begin().m(-f * 20, -150).l(ax, ay).stroke(16, P.ink);
-    pen.begin().m(-f * 20, -150).l(ax, ay).stroke(10, P.gold);
+    pen.begin().m(-f * 20, -150).l(ax, ay).stroke(10, this.cfg.arm);
     for (let k = 0.1; k < 1; k += 0.12) { const lx = lerp(-f * 20, ax, k), ly = lerp(-150, ay, k); pen.begin().m(lx - 5, ly - 4).l(lx + 5, ly + 4).stroke(2, P.goldDark); }
     // chain
     ctx.strokeStyle = P.ink; ctx.lineWidth = 3;
     const bx = this.ballX - this.x, by = this.ballY - this.y;
     for (let k = 0; k < 1; k += 0.08) { const lx = lerp(ax, bx, k), ly = lerp(ay, by, k); ctx.beginPath(); ctx.ellipse(lx, ly, 3, 5, this.ang, 0, Math.PI * 2); ctx.stroke(); }
     // wrecking ball
-    pen.begin().ell(bx, by, this.ballR, this.ballR).ink('#3a3436', 3.2);
-    ctx.fillStyle = 'rgba(255,255,255,0.3)'; ctx.beginPath(); ctx.ellipse(bx - 9, by - 9, 7, 5, -0.6, 0, 7); ctx.fill();
-    for (let a = 0; a < 6; a++) { const sx = bx + Math.cos(a) * 18, sy = by + Math.sin(a) * 18; ctx.fillStyle = P.steelDark; ctx.beginPath(); ctx.arc(sx, sy, 2, 0, 7); ctx.fill(); }
-    // treads
-    pen.begin().rrect(-130, -42, 260, 42, 20).ink('#3a3436', 3.2);
-    for (let i = 0; i < 9; i++) { const wx = -110 + i * 27.5; ctx.save(); ctx.translate(wx, -21); ctx.rotate(this.stompT); pen.begin().ell(0, 0, 11, 11).ink(P.steelDark, 2); pen.begin().m(-8, 0).l(8, 0).stroke(2, P.steel); ctx.restore(); }
+    this.drawBall(ctx, bx, by);
+    if (this.cfg.ship) {
+      // paddle-steamer hull + paddle wheel
+      pen.begin().m(-150, -46).l(150, -46).q(140, 10, 100, 14).l(-110, 14).q(-145, 0, -150, -46).close().ink('#2e3c42', 3.2);
+      ctx.save(); ctx.translate(-f * 120, -30); ctx.rotate(this.t * 2 * f);
+      for (let k = 0; k < 6; k++) { ctx.rotate(Math.PI / 3); pen.begin().rect(-4, 0, 8, 34).ink(P.brownLight, 2); }
+      ctx.restore();
+    } else {
+      // treads
+      pen.begin().rrect(-130, -42, 260, 42, 20).ink('#3a3436', 3.2);
+      for (let i = 0; i < 9; i++) { const wx = -110 + i * 27.5; ctx.save(); ctx.translate(wx, -21); ctx.rotate(this.stompT); pen.begin().ell(0, 0, 11, 11).ink(P.steelDark, 2); pen.begin().m(-8, 0).l(8, 0).stroke(2, P.steel); ctx.restore(); }
+    }
     // hull
     const hull = () => pen.begin().m(-120, -40).l(-104, -130).l(104, -130).l(122, -40).close();
-    hull(); pen.ink(this.hitFlash > 0 ? P.white : P.rust, 3.4);
+    hull(); pen.ink(this.hitFlash > 0 ? P.white : this.cfg.hull, 3.4);
     cel(ctx, hull, () => {
       ctx.fillStyle = 'rgba(40,10,10,0.25)'; ctx.fillRect(40, -140, 100, 110);
       ctx.fillStyle = P.rustDark; for (let i = -100; i < 110; i += 20) { ctx.beginPath(); ctx.arc(i, -120, 2, 0, 7); ctx.arc(i, -50, 2, 0, 7); ctx.fill(); }
@@ -159,11 +176,11 @@ export class Boss {
     });
     // painted name
     ctx.save(); ctx.scale(1, 1);
-    inkText(ctx, 'BIG BERTHA', 0, -86, 26, P.parchment, { outline: 4, shadow: false });
+    inkText(ctx, this.cfg.short, 0, -86, this.cfg.short.length > 10 ? 20 : 26, P.parchment, { outline: 4, shadow: false });
     ctx.restore();
     // cab with angry face windows
     const cx = f * 40;
-    pen.begin().rect(cx - 40, -200, 80, 72).ink(P.olive, 3.2);
+    pen.begin().rect(cx - 40, -200, 80, 72).ink(this.cfg.cab, 3.2);
     const blink = Math.sin(this.t * 2) > 0.95;
     for (const ex of [-18, 18]) {
       pen.begin().rect(cx + ex - 12, -186, 24, 18).ink(blink ? P.olive : P.gold, 2.4);
@@ -193,14 +210,42 @@ export class Boss {
     }
     ctx.restore();
   }
+  private drawBall(ctx: CanvasRenderingContext2D, bx: number, by: number) {
+    const r = this.ballR;
+    switch (this.cfg.ball) {
+      case 'anchor':
+        pen.begin().m(bx, by - r).l(bx, by + r * 0.8).stroke(7, P.ink); pen.begin().m(bx, by - r).l(bx, by + r * 0.8).stroke(4, P.steel);
+        pen.begin().m(bx - r, by + 2).q(bx, by + r * 1.6, bx + r, by + 2).stroke(8, P.ink); pen.begin().m(bx - r, by + 2).q(bx, by + r * 1.6, bx + r, by + 2).stroke(4.5, P.steel);
+        pen.begin().m(bx - r * 0.6, by - r * 0.5).l(bx + r * 0.6, by - r * 0.5).stroke(5, P.ink);
+        pen.begin().ell(bx, by - r - 4, 6, 6).stroke(3);
+        break;
+      case 'drill':
+        pen.begin().m(bx - r, by - r * 0.6).l(bx + r, by - r * 0.6).l(bx, by + r * 1.4).close().ink(P.steelLight, 3);
+        for (let k = 0; k < 4; k++) { const yy = by - r * 0.4 + k * 10 + ((this.t * 40) % 10); pen.begin().m(bx - r * (1 - k * 0.22), yy).l(bx + r * (1 - k * 0.22), yy + 6).stroke(2, P.steelDark); }
+        break;
+      case 'ice':
+        pen.begin().poly([[bx - r, by - 6], [bx - r * 0.4, by - r], [bx + r * 0.7, by - r * 0.8], [bx + r, by + 4], [bx + r * 0.3, by + r], [bx - r * 0.7, by + r * 0.7]]).ink('#cfe8f4', 3);
+        pen.begin().m(bx - r * 0.4, by - r * 0.6).l(bx + r * 0.1, by + r * 0.3).stroke(2, P.white);
+        break;
+      case 'fire':
+        pen.begin().ell(bx, by, r, r).ink('#3a2a26', 3.2);
+        for (let k = 0; k < 5; k++) { const a = this.t * 6 + k * 1.25; pen.begin().ell(bx + Math.cos(a) * r, by + Math.sin(a) * r, 8, 10).ink(k % 2 ? P.flame2 : P.flame3, 1.5); }
+        ctx.fillStyle = 'rgba(255,140,60,0.6)'; ctx.beginPath(); ctx.arc(bx, by, r * 0.6, 0, 7); ctx.fill();
+        break;
+      default:
+        pen.begin().ell(bx, by, r, r).ink('#3a3436', 3.2);
+        ctx.fillStyle = 'rgba(255,255,255,0.3)'; ctx.beginPath(); ctx.ellipse(bx - 9, by - 9, 7, 5, -0.6, 0, 7); ctx.fill();
+        for (let a = 0; a < 6; a++) { const sx = bx + Math.cos(a) * 18, sy = by + Math.sin(a) * 18; ctx.fillStyle = P.steelDark; ctx.beginPath(); ctx.arc(sx, sy, 2, 0, 7); ctx.fill(); }
+    }
+  }
   drawIntro(ctx: CanvasRenderingContext2D, W: number, H: number) {
     if (this.intro <= 0) return;
     const k = this.intro;
     const a = k > 2.2 ? (2.6 - k) / 0.4 : k < 0.4 ? k / 0.4 : 1;
     ctx.save(); ctx.globalAlpha = a;
     ctx.fillStyle = 'rgba(42,26,20,0.75)'; ctx.fillRect(0, H * 0.32, W, H * 0.3);
-    inkText(ctx, 'BIG BERTHA', W / 2, H * 0.43, 64, P.gold, { outline: 8 });
-    inkText(ctx, 'the Scrap Baron\'s crane-tank', W / 2, H * 0.54, 22, P.parchment, { outline: 4, font: '"Patrick Hand", sans-serif' });
+    inkText(ctx, this.cfg.name, W / 2, H * 0.43, this.cfg.name.length > 12 ? 52 : 64, P.gold, { outline: 8 });
+    inkText(ctx, this.cfg.sub, W / 2, H * 0.54, 22, P.parchment, { outline: 4, font: '"Patrick Hand", sans-serif' });
     ctx.restore();
   }
 }

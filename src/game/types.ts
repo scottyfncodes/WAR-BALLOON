@@ -1,11 +1,12 @@
 import type { ResKey } from './upgrades';
 export type ItemKind = ResKey | 'crate' | 'supply' | 'mystery' | 'survivor' | 'postcard' | 'medicine';
 export type PowerKind = 'cluster' | 'shield' | 'hotair' | 'bombs';
-export type EnemyKind = 'buzzard' | 'turret' | 'buggy' | 'gyro';
+export type EnemyKind = 'buzzard' | 'turret' | 'buggy' | 'gyro' | 'mine' | 'snapper' | 'moth';
 export type TargetKind = 'barricade' | 'junkpile' | 'siren' | 'cratestack' | 'depot';
 
 export interface EntSpec {
-  t: 'item' | 'power' | 'enemy' | 'target' | 'powerline' | 'gust' | 'exit' | 'boss' | 'hint';
+  t: 'item' | 'power' | 'enemy' | 'target' | 'powerline' | 'gust' | 'exit' | 'boss' | 'hint' | 'storm' | 'vent';
+  style?: 'wind' | 'sand' | 'snow';
   x: number;
   /** altitude above surface (for air things) */
   alt?: number;
@@ -37,4 +38,7 @@ export interface MissionSpec {
   requires?: string;
   boss?: boolean;
   free?: boolean;
+  biome?: string;
+  lava?: [number, number][];
+  bossCfg?: string;
 }

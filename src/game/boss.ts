@@ -3,18 +3,18 @@ import { pen, inkText, cel } from '../render/ink';
 import { clamp, dist, rand, lerp } from '../core/math';
 import { Audio } from '../core/audio';
 import type { World } from './world';
-import { Projectile, Enemy } from './entities';
+import { Projectile, Enemy, Eruption } from './entities';
 
 interface Valve { ox: number; hp: number; flash: number; }
 
-export interface BossCfg { id: string; name: string; short: string; sub: string; hull: string; cab: string; arm: string; ball: 'ball' | 'anchor' | 'drill' | 'ice' | 'fire'; ship?: boolean; mortar: 'junk' | 'snow'; summon: 'buzzard' | 'moth'; speed: number; valveHp: number; }
+export interface BossCfg { id: string; name: string; short: string; sub: string; hull: string; cab: string; arm: string; ball: 'ball' | 'anchor' | 'drill' | 'ice' | 'fire'; ship?: boolean; special?: 'geyser' | 'broadside' | 'vines' | 'breath' | 'firerain'; mortar: 'junk' | 'snow'; summon: 'buzzard' | 'moth'; speed: number; valveHp: number; }
 export const BOSSES: Record<string, BossCfg> = {
   bertha: { id: 'bertha', name: 'BIG BERTHA', short: 'BIG BERTHA', sub: 'the Scrap Baron\'s crane-tank', hull: P.rust, cab: P.olive, arm: P.gold, ball: 'ball', mortar: 'junk', summon: 'buzzard', speed: 1, valveHp: 2 },
-  dredger: { id: 'dredger', name: 'THE DUNE DREDGER', short: 'DREDGER', sub: 'eats sand, spits scrap', hull: '#c08a52', cab: P.teal, arm: P.red, ball: 'drill', mortar: 'junk', summon: 'buzzard', speed: 1.2, valveHp: 2 },
-  salty: { id: 'salty', name: 'OLD SALTY', short: 'OLD SALTY', sub: 'a paddle-steamer with a grudge', hull: '#4f6670', cab: P.parchment, arm: P.steel, ball: 'anchor', ship: true, mortar: 'junk', summon: 'buzzard', speed: 1.1, valveHp: 3 },
-  bramble: { id: 'bramble', name: 'THE BRAMBLE KING', short: 'BRAMBLE KING', sub: 'a lawnmower that grew a crown', hull: '#5a6e3a', cab: '#8a5a2b', arm: '#4f7a2a', ball: 'ball', mortar: 'junk', summon: 'moth', speed: 1.25, valveHp: 3 },
-  icebreaker: { id: 'icebreaker', name: 'THE ICEBREAKER', short: 'ICEBREAKER', sub: 'cracks glaciers for breakfast', hull: '#6a7a8a', cab: P.red, arm: '#dfe6ee', ball: 'ice', mortar: 'snow', summon: 'buzzard', speed: 1.3, valveHp: 3 },
-  furnace: { id: 'furnace', name: 'THE IRON FURNACE', short: 'IRON FURNACE', sub: 'the Scrap Baron\'s last stand', hull: '#3a3030', cab: '#7a2a1a', arm: '#c4841d', ball: 'fire', mortar: 'junk', summon: 'buzzard', speed: 1.45, valveHp: 4 },
+  dredger: { id: 'dredger', special: 'geyser', name: 'THE DUNE DREDGER', short: 'DREDGER', sub: 'eats sand, spits scrap', hull: '#c08a52', cab: P.teal, arm: P.red, ball: 'drill', mortar: 'junk', summon: 'buzzard', speed: 1.2, valveHp: 2 },
+  salty: { id: 'salty', special: 'broadside', name: 'OLD SALTY', short: 'OLD SALTY', sub: 'a paddle-steamer with a grudge', hull: '#4f6670', cab: P.parchment, arm: P.steel, ball: 'anchor', ship: true, mortar: 'junk', summon: 'buzzard', speed: 1.1, valveHp: 3 },
+  bramble: { id: 'bramble', special: 'vines', name: 'THE BRAMBLE KING', short: 'BRAMBLE KING', sub: 'a lawnmower that grew a crown', hull: '#5a6e3a', cab: '#8a5a2b', arm: '#4f7a2a', ball: 'ball', mortar: 'junk', summon: 'moth', speed: 1.25, valveHp: 3 },
+  icebreaker: { id: 'icebreaker', special: 'breath', name: 'THE ICEBREAKER', short: 'ICEBREAKER', sub: 'cracks glaciers for breakfast', hull: '#6a7a8a', cab: P.red, arm: '#dfe6ee', ball: 'ice', mortar: 'snow', summon: 'buzzard', speed: 1.3, valveHp: 3 },
+  furnace: { id: 'furnace', special: 'firerain', name: 'THE IRON FURNACE', short: 'IRON FURNACE', sub: 'the Scrap Baron\'s last stand', hull: '#3a3030', cab: '#7a2a1a', arm: '#c4841d', ball: 'fire', mortar: 'junk', summon: 'buzzard', speed: 1.45, valveHp: 4 },
 };
 
 /** BIG BERTHA — the Scrap Baron's crane-tank. Bomb her three pressure valves. */
@@ -25,7 +25,7 @@ export class Boss {
   // wrecking ball pendulum
   ang = 0.4; angV = 0; chain = 170; ballX = 0; ballY = 0; ballR = 26;
   armSwing = 0;
-  mortarCd = 3; summonCd = 8; hitFlash = 0; stompT = 0;
+  mortarCd = 3; summonCd = 8; hitFlash = 0; stompT = 0; specialCd = 4; breathT = 0;
   cfg: BossCfg;
   constructor(x: number, groundY: number, arenaX: number, arenaW: number, cfg: BossCfg = BOSSES.bertha) { this.x = x; this.y = groundY; this.arenaX = arenaX; this.arenaW = arenaW; this.cfg = cfg; this.valves.forEach((v) => (v.hp = cfg.valveHp)); }
   get alive() { return this.valves.filter((v) => v.hp > 0).length; }
@@ -89,8 +89,62 @@ export class Boss {
         Audio.squawk(); w.fx.burst(this.x, this.y - 240, 'SQUAWK!', 20);
       }
     }
+    // signature attack
+    if (this.cfg.special && this.intro <= 0) {
+      this.specialCd -= dt;
+      if (this.specialCd <= 0) { this.specialCd = Math.max(3.2, 6.5 - this.phase * 1.1); this.special(w); }
+    }
+    if (this.breathT > 0) {
+      this.breathT -= dt;
+      const f = this.dir, cx = this.x + f * 60, cy = this.y - 170;
+      for (let i = 0; i < 3; i++) w.fx.add({ kind: 'smoke', x: cx, y: cy, vx: f * (380 + Math.random() * 120), vy: (Math.random() - 0.5) * 140, r: 8, life: 0.9, max: 0.9, color: '#eef6fa', drag: 0.8 });
+      const dx = (p.x - cx) * f;
+      if (dx > 0 && dx < 460 && Math.abs((p.y - 60) - cy) < 70 + dx * 0.35) {
+        p.vx += f * 260 * dt;
+        if (!p.stats.heater) p.ice = Math.min(1, p.ice + dt * 0.45);
+      }
+    }
     // smoke
     if (Math.random() < 0.3) w.fx.add({ kind: 'smoke', x: this.x - this.dir * 50, y: this.y - 190, vx: rand(-10, 10), vy: -60, r: 10, life: 1.2, max: 1.2, color: '#3b302c', drag: 0.8, grav: -10 });
+  }
+  private special(w: World) {
+    const p = w.player;
+    switch (this.cfg.special) {
+      case 'geyser': case 'firerain': {
+        const kind = this.cfg.special === 'geyser' ? 'sand' : 'fire';
+        const n = this.cfg.special === 'firerain' ? 2 + this.phase : 1 + Math.min(2, this.phase - 1);
+        for (let i = 0; i < n; i++) {
+          const x = Math.max(this.arenaX + 40, Math.min(this.arenaX + this.arenaW - 40, p.x + p.vx * 0.9 + (i - (n - 1) / 2) * 150));
+          w.eruptions.push(new Eruption(x, w.terrain.floorY(x), kind));
+        }
+        w.fx.burst(this.x, this.y - 230, kind === 'sand' ? 'RUMBLE!' : 'FWOOSH!', 20);
+        break;
+      }
+      case 'broadside': {
+        const sx = this.x, sy = this.y - 60;
+        for (let i = -1; i <= 1; i++) {
+          const a = Math.atan2(p.y - 60 - sy, p.x - sx) + i * 0.28;
+          w.projectiles.push(new Projectile(sx, sy, Math.cos(a) * 280, Math.sin(a) * 280, 'flak', 1.3 + Math.abs(i) * 0.2));
+        }
+        w.fx.puff(sx, sy, 8, P.smokeLight, 12); Audio.thump(); Audio.explosion(0.5);
+        w.fx.burst(sx, sy - 30, 'BROADSIDE!', 20);
+        break;
+      }
+      case 'vines': {
+        const n = Math.min(3, this.phase);
+        for (let i = 0; i < n; i++) {
+          const x = p.x + (i - (n - 1) / 2) * 110 + p.vx * 0.5;
+          const e = new Enemy(x, w.terrain.surfaceY(x), 'snapper'); e.active = true; e.life = 7; e.cd = 0.3; e.style = 'green';
+          w.enemies.push(e); w.fx.dust(x, w.terrain.surfaceY(x), 5);
+        }
+        w.fx.burst(this.x, this.y - 230, 'SPROUT!', 20); Audio.puff();
+        break;
+      }
+      case 'breath': {
+        this.breathT = 2.2; w.fx.burst(this.x, this.y - 230, 'HWOOOO!', 20); Audio.noiseBurst(2.2, { f: 2000, f2: 600, gain: 0.25, type: 'bandpass', q: 0.6 });
+        break;
+      }
+    }
   }
   valvePos(v: Valve) { return { x: this.x + v.ox * this.dir, y: this.y - 132 }; }
   /** Returns true if a bomb at (x,y) should detonate on the boss. */
@@ -174,6 +228,24 @@ export class Boss {
       ctx.fillStyle = P.rustDark; for (let i = -100; i < 110; i += 20) { ctx.beginPath(); ctx.arc(i, -120, 2, 0, 7); ctx.arc(i, -50, 2, 0, 7); ctx.fill(); }
       ctx.fillStyle = 'rgba(255,230,180,0.15)'; ctx.fillRect(-110, -128, 200, 8);
     });
+    // signature silhouettes
+    switch (this.cfg.id) {
+      case 'dredger': // giant drill on the nose
+        pen.begin().m(f * 118, -110).l(f * 200, -80).l(f * 118, -50).close().ink(P.steelLight, 3);
+        for (let k = 0; k < 4; k++) { const xx = f * (128 + k * 18); pen.begin().m(xx, -104 + k * 6 + ((this.t * 60) % 6)).l(xx, -56 - k * 6).stroke(2, P.steelDark); }
+        break;
+      case 'bramble': // vines + a crown of thorns
+        for (let k = 0; k < 6; k++) { const vx = -100 + k * 40; pen.begin().m(vx, -130).q(vx + 10, -90, vx - 6, -44).stroke(4, '#3f6a24'); pen.begin().ell(vx + 4, -96, 6, 4).fill('#7aa04a'); }
+        break;
+      case 'icebreaker': // plough blade + icicles
+        pen.begin().m(f * 118, -120).q(f * 175, -80, f * 140, -10).l(f * 118, -40).close().ink('#dfe6ee', 3);
+        for (let k = 0; k < 8; k++) { const ix = -100 + k * 27; pen.begin().m(ix - 4, -40).l(ix, -40 + 10 + (k % 3) * 5).l(ix + 4, -40).close().ink('#d8eef6', 1.2); }
+        break;
+      case 'furnace': // glowing grille
+        ctx.fillStyle = `rgba(255,${120 + Math.sin(this.t * 8) * 40},40,0.85)`; ctx.fillRect(-60, -70, 120, 22);
+        for (let k = -50; k <= 50; k += 14) pen.begin().m(k, -72).l(k, -46).stroke(3);
+        break;
+    }
     // painted name
     ctx.save(); ctx.scale(1, 1);
     inkText(ctx, this.cfg.short, 0, -86, this.cfg.short.length > 10 ? 20 : 26, P.parchment, { outline: 4, shadow: false });

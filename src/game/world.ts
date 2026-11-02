@@ -4,7 +4,7 @@ import { clamp, dist, rand, pick, RNG, damp } from '../core/math';
 import { Audio } from '../core/audio';
 import { Terrain, GROUND, CEILING } from './level';
 import { Player, type Controls } from './player';
-import { Item, PowerUp, Target, Enemy, Projectile, Bomb, PowerLine, Smokestack, Gust, Storm, POWER_INFO, ITEM_INFO } from './entities';
+import { Item, PowerUp, Target, Enemy, Projectile, Bomb, PowerLine, Smokestack, Gust, Storm, Eruption, POWER_INFO, ITEM_INFO } from './entities';
 import { biome as getBiome, CAMP_NAMES, type Biome } from './biomes';
 import { BOSSES } from './boss';
 import { Boss } from './boss';
@@ -23,6 +23,7 @@ export class World {
   projectiles: Projectile[] = []; bombs: Bomb[] = []; lines: PowerLine[] = []; stacks: Smokestack[] = []; gusts: Gust[] = [];
   boss: Boss | null = null;
   storms: Storm[] = [];
+  eruptions: Eruption[] = [];
   biome: Biome;
   stormLevel = 1;
   exitX: number;
@@ -40,14 +41,14 @@ export class World {
   bombsDropped = 0; hookedCount = 0; kills = 0;
   bossArena: [number, number] | null = null;
   ventSpecs: number[] = [];
-  constructor(spec: MissionSpec, stats: Stats, levels: Record<string, number>, paint: string, provisions: boolean) {
+  constructor(spec: MissionSpec, stats: Stats, levels: Record<string, number>, paint: string, provisions: boolean, assist = 0) {
     this.spec = spec;
     this.length = spec.length;
     this.wind = spec.wind;
     this.biome = getBiome(spec.biome);
     this.terrain = new Terrain(spec.length, spec.seed, spec.buildings.map((b) => ({ ...b })), this.biome, spec.lava ?? []);
     const startY = this.terrain.floorY(190) - 20;
-    this.player = new Player(190, startY, stats, levels, paint, provisions ? 30 : 0, provisions ? 1 : 0);
+    this.player = new Player(190, startY, stats, levels, paint, provisions ? 30 : 0, (provisions ? 1 : 0) + assist);
     this.exitX = spec.length - 180;
     for (const e of spec.ents) this.spawn(e);
     for (const b of this.terrain.buildings) if (b.chimney) this.stacks.push(new Smokestack(b.x + b.w / 2, b.top - 78));
@@ -251,6 +252,8 @@ export class World {
     for (const l of this.lines) l.update(this, dt);
     for (const s of this.stacks) s.update(this, dt);
     for (const st of this.storms) st.update(this, dt);
+    for (const e of this.eruptions) e.update(this, dt);
+    this.eruptions = this.eruptions.filter((e) => !e.dead);
     const g = this.gustAt(p.x); this.stormLevel = damp(this.stormLevel, g && g.style !== 'wind' ? 2.4 : 1, 2, dt);
     this.boss?.update(this, dt);
     this.items = this.items.filter((i) => !i.dead);
@@ -344,6 +347,7 @@ export class World {
     this.fx.draw(ctx, 'back');
     this.terrain.drawBuildings(ctx, x0, x1);
     for (const s of this.stacks) s.draw(ctx);
+    for (const e of this.eruptions) e.draw(ctx);
     this.drawHaven(ctx, 70, false);
     this.drawHaven(ctx, this.exitX, true);
     this.terrain.drawGround(ctx, x0, x1);

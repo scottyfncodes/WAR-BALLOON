@@ -51,7 +51,7 @@ const fail = (m) => { console.error('SMOKE FAIL:', m); process.exit(1); };
   await ev(`(()=>{const e=${E};const b=e.beacon;e.zombies=e.zombies.filter(z=>Math.abs(z.x-b.x)>400);})()`);
   await hover(`const b=e.beacon;s.x=b.x+b.w/2;s.y=b.top-140`, 2500);
   if (!(await ev(`${E}.beaconLit`))) fail('beacon not lit');
-  if (!(await ev(`__wb.Save.data.regions.suburbs.beacon`))) fail('beacon not saved');
+  if (await ev(`!!__wb.Save.data.regions.suburbs.beacon`)) fail('beacon locked in before getting home');
 
   // 5. fly home -> report -> save
   await hover(`const h=e.haven;s.x=h.x+h.w/2;s.y=h.top-s.g.bottom*0.8-4;s.hangers.length=0`, 1500);
@@ -62,6 +62,7 @@ const fail = (m) => { console.error('SMOKE FAIL:', m); process.exit(1); };
   if (!o.scene) fail('report scene not shown');
   if (o.crew !== 1) fail('rescued survivor did not join the roster');
   if (o.exp !== 1) fail('expedition not recorded');
+  if (!(await ev(`!!__wb.Save.data.regions.suburbs.beacon`))) fail('beacon not saved after landing');
 
   // 6. upgrade the basket: more seats, visibly bigger
   await open('?scene=workshop', 800);

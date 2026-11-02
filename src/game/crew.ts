@@ -8,7 +8,7 @@ export const ROLES: Role[] = ['mechanic', 'gunner', 'medic', 'scavenger', 'looko
 
 export interface RoleInfo { name: string; color: string; icon: string; blurb: string; perLevel: string; }
 export const ROLE_INFO: Record<Role, RoleInfo> = {
-  mechanic: { name: 'Mechanic', color: P.brass, icon: 'wrench', blurb: 'Patches the envelope mid-flight.', perLevel: 'repairs faster' },
+  mechanic: { name: 'Mechanic', color: P.brass, icon: 'wrench', blurb: 'Patches the envelope mid-flight (up to 80%).', perLevel: 'repairs faster' },
   gunner: { name: 'Gunner', color: P.red, icon: 'gun', blurb: 'Shoots hangers & leapers. Mans the mounted gun.', perLevel: 'shoots faster' },
   medic: { name: 'Medic', color: P.redBright, icon: 'cross', blurb: 'Heals Jerry & crew in the air. Prevents injuries.', perLevel: 'heals faster' },
   scavenger: { name: 'Scavenger', color: P.olive, icon: 'sack', blurb: 'More loot from every pickup. Faster winch.', perLevel: '+loot' },

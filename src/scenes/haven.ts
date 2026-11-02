@@ -9,7 +9,7 @@ import { go } from './router';
 import { Scenes } from './registry';
 import { drawBackdrop, drawPost } from './backdrop';
 import { drawMenuAirship, resourceBar } from './common';
-import { BIOMES, BIOME_ORDER, type BiomeId } from '../game/biomes';
+import { BIOMES, BIOME_ORDER, regionNeeds, type BiomeId } from '../game/biomes';
 import { Z_INFO } from '../game/zombies';
 import { drawZombie } from '../render/zombieArt';
 import { drawResIcon } from '../game/resources';
@@ -26,6 +26,8 @@ export class HavenScene implements Scene {
     const s = Save.data;
     this.idx = Math.max(0, BIOME_ORDER.indexOf(s.region));
     if (!Save.regionUnlocked(this.idx, BIOME_ORDER)) this.idx = 0;
+    // a freshly opened region is worth showing off, even if the balloon isn't ready yet
+    for (let i = 5; i > this.idx; i--) if (Save.regionUnlocked(i, BIOME_ORDER) && !s.regions[BIOME_ORDER[i]]?.runs) { this.idx = i; break; }
   }
   update(dt: number) { this.t += dt; UI.update(); this.slide = Math.max(0, this.slide - dt * 4); }
   unlocked(i: number) { return Save.regionUnlocked(i, BIOME_ORDER); }
@@ -114,7 +116,14 @@ export class HavenScene implements Scene {
     const cook = crew.some((c) => c.role === 'cook'), chef = crew.some((c) => c.special === 'chef');
     const food = chef ? 0 : Math.ceil(crew.length * (cook ? 0.5 : 1));
     const by = cy + ch - 66;
-    UI.button(ctx, 'launch', cx + 16, by, cw - 32, 54, unlocked ? 'LAUNCH!' : 'LOCKED', () => this.launch(), { style: 'red', size: 30, enabled: unlocked, keys: ['Enter'], sub: unlocked ? `${crew.length} crew aboard${food ? ` · eats ${food} food` : ''}${s.res.food < food ? ' (not enough! they\'ll go hungry)' : ''}` : undefined });
+    const missing = unlocked ? regionNeeds(region.id, s.levels) : [];
+    if (missing.length) {
+      pen.use(ctx, 0.4).begin().rrect(cx + 16, by - 52, cw - 32, 44, 8).ink('#f3d8b0', 2, P.redDark);
+      bodyText(ctx, 'Too dangerous for this balloon! Needs:', cx + cw / 2, by - 40, 14, P.redDark, 'center');
+      inkText(ctx, missing.join(' + ').toUpperCase(), cx + cw / 2, by - 20, 15, P.redDark, { outline: 0, shadow: false });
+    }
+    const ready = unlocked && !missing.length;
+    UI.button(ctx, 'launch', cx + 16, by, cw - 32, 54, unlocked ? (ready ? 'LAUNCH!' : 'UPGRADE FIRST') : 'LOCKED', () => (ready ? this.launch() : go(Scenes.workshop, { tab: 'basket' })), { style: ready ? 'red' : 'brass', size: ready ? 30 : 24, enabled: unlocked, keys: ['Enter'], sub: !ready ? (unlocked ? 'opens the Workshop' : undefined) : unlocked ? `${crew.length} crew aboard${food ? ` · eats ${food} food` : ''}${s.res.food < food ? ' (not enough! they\'ll go hungry)' : ''}` : undefined });
     // ---- hub buttons ----
     const bw = 150, bx = Lx, byy = T + 168;
     const canBuy = UPGRADES.some((u) => { const lv = s.levels[u.id] ?? 0; return lv < u.costs.length && canAfford(u.costs[lv]) && (!u.region || this.unlocked(u.region)) && (!u.requires || (s.levels[u.requires[0]] ?? 0) >= u.requires[1]); });

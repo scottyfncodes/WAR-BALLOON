@@ -98,7 +98,9 @@ export class Zombie {
     if (this.stun > 0) return;
     // special actions
     if (this.state === 'scream' || this.state === 'spit' || this.state === 'throw') {
-      if (this.stateT > (this.state === 'scream' ? 1.3 : 0.6)) { this.state = 'chase'; this.stateT = 0; }
+      // wind-up first, so the player gets a tell and a moment to dodge
+      if (!this.thrown && this.state !== 'scream' && this.stateT > (this.state === 'throw' ? 0.55 : 0.35)) { this.thrown = true; if (this.state === 'throw') e.throwRubble(this); else e.spit(this); }
+      if (this.stateT > (this.state === 'scream' ? 1.3 : 0.9)) { this.state = 'chase'; this.stateT = 0; }
       return;
     }
     if (this.state === 'crouch') {
@@ -145,15 +147,15 @@ export class Zombie {
     // ----- attacks -----
     const adx = Math.abs(dx);
     if (this.kind === 'screamer' && !this.screamed && adx < 360) { this.screamed = true; this.state = 'scream'; this.stateT = 0; e.scream(this); return; }
-    if (this.kind === 'spitter' && this.cd <= 0 && adx < 400 && alt < 60) { this.cd = rand(3.2, 4.5) / e.aggro; this.state = 'spit'; this.stateT = 0; e.spit(this); return; }
-    if (this.kind === 'brute' && this.cd <= 0 && adx < 300 && adx > 60 && alt < 30 && -alt < 360) { this.cd = rand(4, 5.5) / e.aggro; this.state = 'throw'; this.stateT = 0; e.throwRubble(this); return; }
-    if (this.kind === 'leaper' && this.cd <= 0 && adx < 230 && -alt > 25 && -alt < 230) { this.state = 'crouch'; this.stateT = 0; this.cd = rand(2.5, 4); return; }
+    if (this.kind === 'spitter' && this.cd <= 0 && adx < 340 && alt < 60 && e.canRanged()) { this.cd = rand(5, 7) / e.aggro; this.state = 'spit'; this.stateT = 0; this.thrown = false; return; }
+    if (this.kind === 'brute' && this.cd <= 0 && adx < 280 && adx > 60 && alt < 30 && -alt < 320 && e.canRanged()) { this.cd = rand(6.5, 9) / e.aggro; this.state = 'throw'; this.stateT = 0; this.thrown = false; return; }
+    if (this.kind === 'leaper' && this.cd <= 0 && adx < 190 + 12 * e.region.danger && -alt > 25 && -alt < 190 + 12 * e.region.danger) { this.state = 'crouch'; this.stateT = 0; this.cd = rand(2.5, 4); return; }
     // grab the basket when it flies within reach
     if (this.grabCd <= 0 && adx < ship.halfW + 10) {
       const reachY = this.handY();
       if (ship.basketY >= reachY - 6 && ship.basketY < this.y - this.sy + 4) {
         this.grabCd = 0.35;
-        if (Math.random() < 0.55 * e.aggro) ship.attach(e, this);
+        if (Math.random() < (0.42 + 0.06 * e.region.danger) * e.aggro) ship.attach(e, this);
       }
     }
   }
@@ -184,6 +186,8 @@ export class Zombie {
     }
   }
   reaching = false;
+  thrown = true;
+  tough = false;
 
   draw(ctx: CanvasRenderingContext2D, e: Expedition) {
     if (this.attached) return;
@@ -192,7 +196,7 @@ export class Zombie {
     if (this.state === 'dead') { ctx.globalAlpha = clamp(1.6 - this.deadT * 0.6, 0, 1); }
     if (this.state === 'climb') ctx.translate(0, 0);
     drawZombie(ctx, { kind: this.kind, pose: this.pose(), t: this.t, facing: this.state === 'climb' ? (this.bld && this.x < this.bld.x + this.bld.w / 2 ? 1 : -1) : this.facing, seed: this.seed, burn: this.burn, flash: this.flash > 0, spin: this.spin });
-    if (this.state === 'crouch') inkText(ctx, '!', 0, -this.h - 20, 22, P.redBright, { outline: 4 });
+    if (this.state === 'crouch' || ((this.state === 'throw' || this.state === 'spit') && !this.thrown)) inkText(ctx, '!', 0, -this.h - 20, 22, P.redBright, { outline: 4 });
     if (this.state === 'scream') { ctx.strokeStyle = 'rgba(226,73,58,0.6)'; ctx.lineWidth = 3; for (let i = 0; i < 3; i++) { const r = ((this.stateT * 120 + i * 40) % 120) + 10; ctx.beginPath(); ctx.arc(8, -this.h, r, -1.2, 0.4); ctx.stroke(); } }
     if (this.kind === 'bloater' && this.hp < Z_INFO.bloater.hp) { ctx.fillStyle = 'rgba(180,230,60,0.3)'; ctx.beginPath(); ctx.arc(0, -this.h * 0.5, 22 + Math.sin(this.t * 12) * 3, 0, 7); ctx.fill(); }
     ctx.restore();

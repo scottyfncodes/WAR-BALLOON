@@ -50,7 +50,7 @@ export class Airship {
   ladder = 0; ladderTarget = 0;
   // character
   expr: Expr = 'neutral'; exprT = 0; arm: ArmPose = 'rest'; armT = 0; blinkT = 2; blink = false; scarf: Pt[] = []; propSpin = 0; t = 0; lookX = 1; lookY = 0; zapT = 0;
-  swatCd = 0; damageTaken = 0;
+  swatCd = 0; damageTaken = 0; strandT = 0;
 
   constructor(x: number, y: number, stats: Stats, levels: Record<string, number>, decor: Record<string, string>, trophies: string[], crew: CrewMember[], hpBonus: number) {
     this.x = x; this.y = y; this.stats = stats; this.levels = levels; this.decor = decor; this.trophies = trophies;
@@ -104,7 +104,7 @@ export class Airship {
     z.state = 'hang'; z.sy = 0; z.bld = null; z.vx = 0; z.vy = 0;
     const plat = [1, 1.4, 1.8][this.stats.plating];
     this.hangers.push({ z, slot: best, grip: Z_INFO[z.kind].grip, climb: 0, gnaw: 0, fuse: z.kind === 'bloater' ? 6 : 0 });
-    this.climbTime.set(z, Z_INFO[z.kind].climb * plat * rand(0.85, 1.15));
+    this.climbTime.set(z, Z_INFO[z.kind].climb * plat * (1.12 - 0.04 * e.region.danger) * rand(0.85, 1.15));
     this.wobble = Math.min(1, this.wobble + 0.25); this.swingV += (z.x < this.x ? -1 : 1) * 1.2; this.vy += 30;
     Audio.thump(); Audio.voice('yikes');
     e.onGrab(z);
@@ -187,9 +187,9 @@ export class Airship {
     if (this.burnerOn && !this.prevBurner) Audio.ignite();
     this.prevBurner = this.burnerOn;
     const upAmt = clamp(-c.y, 0, 1);
-    if (this.burnerOn) { this.heat = Math.min(1, this.heat + 2.2 * st.burnerPower * upAmt * dt); this.fuel = Math.max(0, this.fuel - 2.2 * fuelUse * upAmt * dt); }
+    if (this.burnerOn) { this.heat = Math.min(1, this.heat + 2.2 * st.burnerPower * upAmt * dt); this.fuel = Math.max(0, this.fuel - 1.8 * fuelUse * upAmt * dt); }
     else if (wantDown) this.heat = Math.max(0, this.heat - 1.4 * dt);
-    else this.heat = lerp(this.heat, 0.3, 1 - Math.exp(-0.8 * dt));
+    else this.heat = lerp(this.heat, 0.4, 1 - Math.exp(-0.8 * dt));
     // pilot light keeps a little fuel ticking
     this.fuel = Math.max(0, this.fuel - 0.12 * fuelUse * dt);
     this.burnerVis = damp(this.burnerVis, this.burnerOn ? 1 : 0, 18, dt);
@@ -225,6 +225,8 @@ export class Airship {
     if (this.x < 60) { this.x = 60; this.vx = Math.abs(this.vx) * 0.3; }
     if (this.x > e.length - 60) { this.x = e.length - 60; this.vx = -Math.abs(this.vx) * 0.3; }
     this.collideWorld(e, dt);
+    // stranded: out of fuel on the ground means the trip is over (no soft-lock)
+    if (this.fuel <= 0 && (this.grounded || e.altitude() < 12)) { this.strandT += dt; if (this.strandT > 5) this.crash(e, 'fuel'); } else this.strandT = 0;
     this.updateHangers(e, dt);
     this.updateBoarders(e, dt);
     this.updateCrew(e, dt);
@@ -299,7 +301,7 @@ export class Airship {
       z.x = this.x + b.x * S; z.y = this.y;
       b.atk -= dt;
       if (b.atk <= 0) {
-        b.atk = z.kind === 'brute' ? 1.4 : 1.9;
+        b.atk = (z.kind === 'brute' ? 1.4 : 1.9) * (1.08 - 0.05 * e.region.danger);
         if (this.stats.floor >= 2 && Math.random() < 0.3) { e.fx.popup(z.x, z.y - 30, 'BLOCKED!', P.steelLight, 12); continue; }
         this.hitSomeone(e, 1, z.kind);
       }
@@ -355,7 +357,7 @@ export class Airship {
       const mul = roleMul(c.m);
       switch (c.m.role) {
         case 'mechanic':
-          if (this.env < this.maxEnv && c.cd <= 0) { c.cd = 5 / mul / (c.m.special === 'wrench' ? 2 : 1); this.env = Math.min(this.maxEnv, this.env + 1); c.setPose('work', 0.8); e.fx.popup(this.x - 30, this.envCircle()[1] + 20, '+PATCH', P.tealLight, 12); Audio.ratchet(); }
+          if (this.env < this.maxEnv * 0.8 && c.cd <= 0) { c.cd = 9 / mul / (c.m.special === 'wrench' ? 2 : 1); this.env = Math.min(this.maxEnv * 0.8, this.env + 0.5); c.setPose('work', 0.8); e.fx.popup(this.x - 30, this.envCircle()[1] + 20, '+PATCH', P.tealLight, 12); Audio.ratchet(); }
           break;
         case 'medic':
           if (c.cd <= 0) {
@@ -409,8 +411,8 @@ export class Airship {
     // mounted guns
     const gunner = this.crewMul('gunner');
     if (st.gun > 0) {
-      const rate = [0, 0.45, 0.3, 0.3][st.gun] * (gunner ? 0.62 / (1 + 0.1 * (gunner - 1)) : 1);
-      const range = [0, 260, 320, 340][st.gun];
+      const rate = [0, 0.75, 0.52, 0.48][st.gun] * (gunner ? 0.75 / (1 + 0.08 * (gunner - 1)) : 1);
+      const range = [0, 240, 280, 310][st.gun];
       this.gunCd -= dt; this.gunCd2 -= dt;
       if (this.gunCd <= 0) {
         const tgt = e.pickTarget(range, false, undefined, st.gun >= 3 ? 1 : 0);
@@ -425,7 +427,7 @@ export class Airship {
       this.turretCd -= dt;
       if (this.turretCd <= 0) {
         const tgt = e.pickTarget(250, false, undefined, 0, true);
-        if (tgt) { this.turretCd = 0.38; this.turretAim = Math.atan2(tgt.y - this.basketY, tgt.x - this.x); e.shoot(this.x, this.basketY + 4, tgt, 1); this.turretFlash = 0.06; }
+        if (tgt) { this.turretCd = 0.6; this.turretAim = Math.atan2(tgt.y - this.basketY, tgt.x - this.x); e.shoot(this.x, this.basketY + 4, tgt, 1); this.turretFlash = 0.06; }
       }
     }
   }

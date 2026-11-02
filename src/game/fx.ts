@@ -1,3 +1,4 @@
+import { Engine } from '../core/engine';
 import { P } from '../render/palette';
 import { pen, inkText, FONT_TITLE } from '../render/ink';
 import { rand, pick, clamp, easeOutBack } from '../core/math';
@@ -19,7 +20,7 @@ export class FX {
   flash = 0;
 
   add(p: Partial<Part> & { kind: Part['kind']; x: number; y: number }) {
-    if (this.parts.length > 420) this.parts.shift();
+    if (this.parts.length > (Engine.lite ? 140 : 260)) this.parts.shift();
     this.parts.push({ vx: 0, vy: 0, life: 1, max: 1, r: 6, rot: rand(0, 6), vr: 0, color: P.smoke, grav: 0, drag: 1, ...p } as Part);
   }
   explosion(x: number, y: number, size = 1, text?: string) {

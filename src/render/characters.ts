@@ -4,14 +4,19 @@ import { pen, cel } from './ink';
 export interface CharLook { skin: string; coat: string; hair: string; hat: 'bun' | 'scarf' | 'sailor' | 'straw' | 'hood' | 'mask'; glasses?: 'round' | 'shades' | 'goggles'; beard?: boolean; flower?: boolean; soot?: boolean; }
 
 /** Half-length cartoon portrait for camp leaders. Origin = bottom centre. */
-export function drawCharacter(ctx: CanvasRenderingContext2D, c: CharLook, t: number, talking: boolean) {
+export function drawCharacter(ctx: CanvasRenderingContext2D, c: CharLook, t: number, talking: boolean, cheer = 0) {
   pen.use(ctx, 0.6);
-  const bob = Math.sin(t * 2) * 2;
+  const bob = Math.sin(t * 2) * 2 - (cheer > 0 ? Math.abs(Math.sin(cheer * 9)) * 12 : 0);
   ctx.save(); ctx.translate(0, bob);
   // shoulders / coat
   pen.begin().m(-62, 0).q(-60, -70, 0, -78).q(60, -70, 62, 0).close().ink(c.coat, 3);
   pen.begin().m(0, -76).l(0, 0).stroke(1.6, 'rgba(42,26,20,0.4)');
   for (const by of [-50, -30, -10]) pen.begin().ell(6, by, 3, 3).ink(P.brass, 1.2);
+  if (cheer > 0) for (const sx of [-1, 1]) { // arms flung up in delight
+    pen.begin().m(sx * 46, -56).q(sx * 74, -96, sx * 64, -150 - Math.sin(t * 14) * 6).stroke(16, P.ink);
+    pen.begin().m(sx * 46, -56).q(sx * 74, -96, sx * 64, -150 - Math.sin(t * 14) * 6).stroke(11, c.coat);
+    pen.begin().ell(sx * 64, -156 - Math.sin(t * 14) * 6, 10, 9).ink(P.glove, 2.4);
+  }
   // neck + head
   pen.begin().rect(-10, -92, 20, 18).ink(c.skin, 2.4);
   const head = () => pen.begin().m(-34, -120).q(-36, -168, 0, -170).q(36, -168, 34, -120).q(32, -86, 0, -84).q(-32, -86, -34, -120).close();
@@ -21,6 +26,7 @@ export function drawCharacter(ctx: CanvasRenderingContext2D, c: CharLook, t: num
   // eyes + brows
   const blink = (t % 3.7) < 0.12;
   for (const ex of [-13, 13]) {
+    if (cheer > 0) { pen.begin().m(ex - 7, -124).q(ex, -134, ex + 7, -124).stroke(3); continue; }
     if (blink) { pen.begin().m(ex - 7, -126).l(ex + 7, -126).stroke(2.6); continue; }
     pen.begin().ell(ex, -126, 7, 9).ink(P.white, 2.2);
     pen.begin().ell(ex + 1.5, -125, 3.4, 4.2).fill(P.ink);

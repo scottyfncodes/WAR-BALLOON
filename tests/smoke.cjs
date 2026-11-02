@@ -62,7 +62,7 @@ const fail = (m) => { console.error('SMOKE FAIL:', m); process.exit(1); };
   await open(base + '?play=m2', 600);
   if ((await ev(`${W}.player.stats.bombCap`)) !== 4) fail('workshop perk not applied to bombs');
   // Menus render
-  for (const s of ['title', 'map', 'garage', 'ending', 'camp']) { await open(base + '?scene=' + s, 1200); }
+  for (const s of ['title', 'map', 'garage', 'ending', 'camp', 'scrapbook']) { await open(base + '?scene=' + s, 1200); }
   await b.close();
   if (errs.length) fail('page errors:\n' + errs.join('\n'));
   console.log('SMOKE OK');

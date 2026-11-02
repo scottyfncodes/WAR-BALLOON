@@ -13,6 +13,7 @@ import { PlayScene } from './scenes/play';
 import { ResultsScene } from './scenes/results';
 import { EndingScene } from './scenes/ending';
 import { CampScene } from './scenes/camp';
+import { ScrapbookScene } from './scenes/scrapbook';
 import { go } from './scenes/router';
 import { missionById, MISSIONS } from './game/missions';
 
@@ -26,7 +27,7 @@ async function boot() {
   Input.onFirstGesture.push(() => Audio.unlock());
   document.addEventListener('visibilitychange', () => { if (document.hidden) Audio.suspend(); else Audio.resume(); });
   Scenes.title = new TitleScene(); Scenes.intro = new IntroScene(); Scenes.map = new MapScene();
-  Scenes.garage = new GarageScene(); Scenes.play = new PlayScene(); Scenes.results = new ResultsScene(); Scenes.ending = new EndingScene(); Scenes.camp = new CampScene();
+  Scenes.garage = new GarageScene(); Scenes.play = new PlayScene(); Scenes.results = new ResultsScene(); Scenes.ending = new EndingScene(); Scenes.camp = new CampScene(); Scenes.scrapbook = new ScrapbookScene();
   document.getElementById('boot')?.remove();
   // Debug/test hooks: ?play=m2 jumps straight into a mission.
   const q = new URLSearchParams(location.search);

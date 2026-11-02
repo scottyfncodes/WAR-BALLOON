@@ -17,6 +17,7 @@ import type { MissionSpec } from '../game/types';
 import type { World } from '../game/world';
 import { FX } from '../game/fx';
 import { star } from './map';
+import { checkAchievements } from '../game/achievements';
 import { canAfford } from './common';
 
 export class ResultsScene implements Scene {
@@ -60,6 +61,8 @@ export class ResultsScene implements Scene {
     if (w.postcard && pc && !s.postcards.includes(pc)) { s.postcards.push(pc); this.unlocks.push(`Postcard ${s.postcards.length}/${MISSIONS.length} found`); }
     if (s.postcards.length >= 3 && !s.paintsUnlocked.includes('sunset')) { s.paintsUnlocked.push('sunset'); this.unlocks.push('Paint job: Sunset Checks'); }
     s.stats.bombs += w.bombsDropped; s.stats.destroyed += w.kills; s.stats.hooked += w.hookedCount;
+    if (this.success && this.spec.boss) { if (w.player.damageTaken === 0) s.flags.flawless = true; if (s.difficulty === 'hard') s.flags.hardBoss = true; }
+    for (const a of checkAchievements(s)) this.unlocks.push('🏆 Achievement: ' + a);
     Save.write();
     this.next = this.success ? (MISSIONS.find((m) => m.requires === this.spec.id && !s.missions[m.id]?.done) ?? null) : null;
     Audio.playSong('haven');

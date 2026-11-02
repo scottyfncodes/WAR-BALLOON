@@ -37,6 +37,8 @@ export interface BalloonLook {
   goggleDown: boolean;
   cargoNetFull?: boolean;
   zap?: number;
+  inflate?: number; // 0 = flat on the ground, 1 = full
+  dizzy?: boolean;
 }
 
 export const ENVELOPE_TOP = -228, MOUTH_Y = -92;
@@ -49,6 +51,7 @@ function envHalfWidth(hn: number, rx: number, mouth: number) {
 
 /** Draw Jerry's balloon in local coords: origin at basket rim center. */
 export function drawBalloon(ctx: CanvasRenderingContext2D, b: BalloonLook, amp = 0.7) {
+  // (b may be shallow-copied below for deflated wobble)
   const L = (id: string) => b.levels[id] ?? 0;
   const s = 1 + 0.08 * L('lift');
   const paint = paintById(b.paint);
@@ -58,8 +61,10 @@ export function drawBalloon(ctx: CanvasRenderingContext2D, b: BalloonLook, amp =
   ctx.rotate(b.tilt);
   if (b.flash) ctx.globalAlpha = 0.45;
 
-  const top = MOUTH_Y - (MOUTH_Y - ENVELOPE_TOP) * s, bot = MOUTH_Y;
-  const rx = 64 * s * (1 + b.squash * 0.6), mouth = 15;
+  const inf = b.inflate ?? 1;
+  const top = MOUTH_Y - (MOUTH_Y - ENVELOPE_TOP) * s * (0.32 + 0.68 * inf), bot = MOUTH_Y;
+  const rx = 64 * s * (1 + b.squash * 0.6) * (0.55 + 0.45 * inf), mouth = 15;
+  if (inf < 1) b = { ...b, wobble: Math.max(b.wobble, (1 - inf) * 0.9) };
   const H = bot - top;
   const N = 22;
   const sq = 1 - b.squash * 0.4;
@@ -412,6 +417,15 @@ function drawJerry(ctx: CanvasRenderingContext2D, b: BalloonLook, f: number) {
     }
   }
   glove(hx, hy);
+  if (b.dizzy) {
+    for (let i = 0; i < 3; i++) {
+      const a = b.t * 5 + (i * Math.PI * 2) / 3;
+      const sx = hX + Math.cos(a) * 18, sy = hY - 22 + Math.sin(a) * 5;
+      const pts: number[][] = [];
+      for (let k = 0; k < 10; k++) { const aa = -Math.PI / 2 + (k / 10) * Math.PI * 2; const rr = k % 2 ? 2.2 : 5; pts.push([sx + Math.cos(aa) * rr, sy + Math.sin(aa) * rr]); }
+      pen.begin().poly(pts).ink(P.gold, 1.4);
+    }
+  }
   ctx.restore();
 
   function glove(x: number, y: number) {

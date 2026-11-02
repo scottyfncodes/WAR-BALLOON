@@ -13,6 +13,7 @@ export interface SaveData {
   music: boolean; sfx: boolean;
   provisions: boolean;
   totalRuns: number;
+  population: number;
   stats: { bombs: number; destroyed: number; hooked: number; };
 }
 
@@ -23,7 +24,7 @@ export function freshSave(): SaveData {
     v: 1,
     res: { fuel: 0, scrap: 0, fabric: 0, food: 1, water: 1, electronics: 0 },
     levels: {}, missions: {}, postcards: [], paint: 'classic', paintsUnlocked: ['classic'],
-    seenIntro: false, music: true, sfx: true, provisions: false, totalRuns: 0,
+    seenIntro: false, music: true, sfx: true, provisions: false, totalRuns: 0, population: 0,
     stats: { bombs: 0, destroyed: 0, hooked: 0 },
   };
 }
@@ -42,4 +43,16 @@ export const Save = {
   data: load(),
   write() { try { localStorage.setItem(KEY, JSON.stringify(this.data)); } catch { /* storage blocked: progress lives for this session */ } },
   reset() { this.data = freshSave(); this.write(); },
+  /** Portable save code (survives clearing Safari data if you keep the code). */
+  exportCode(): string { return 'WB1.' + btoa(unescape(encodeURIComponent(JSON.stringify(this.data)))); },
+  importCode(code: string): boolean {
+    try {
+      const c = code.trim(); if (!c.startsWith('WB1.')) return false;
+      const d = JSON.parse(decodeURIComponent(escape(atob(c.slice(4)))));
+      if (!d || typeof d !== 'object' || !d.res) return false;
+      const f = freshSave();
+      this.data = { ...f, ...d, res: { ...f.res, ...d.res }, stats: { ...f.stats, ...(d.stats || {}) } };
+      this.write(); return true;
+    } catch { return false; }
+  },
 };

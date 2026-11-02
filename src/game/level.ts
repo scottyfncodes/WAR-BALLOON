@@ -4,7 +4,7 @@ import { paintBuilding, mix } from '../render/paint';
 import { RNG, noise1 } from '../core/math';
 
 export const GROUND = 500;
-export const CEILING = -60;
+export const CEILING = 50;
 export const WORLD_BOTTOM = 560;
 
 export interface Building { x: number; w: number; h: number; top: number; canvas: HTMLCanvasElement; pad: number; chimney?: boolean; id: number; }

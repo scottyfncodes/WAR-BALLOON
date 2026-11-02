@@ -96,6 +96,21 @@ export class GarageScene implements Scene {
       burner: cel > 0 ? 1 : (Math.sin(this.t * 0.8) > 0.6 ? 0.6 : 0), expr: cel > 0 ? 'cheer' : 'happy', arm: cel > 0 ? 'cheer' : (this.t % 7 < 1.5 ? 'wave' : 'rest'), wobble: cel > 0 ? cel * 0.6 : 0,
       squash: cel > 0 ? Math.sin(cel * 14) * 0.08 : 0,
     });
+    // Haven residents (rescued survivors)
+    const pop = Math.min(8, s.population);
+    for (let i = 0; i < pop; i++) {
+      const sx = px + 110 + (i % 4) * 26 + (i >= 4 ? 13 : 0), sy = H * 0.86 - (i >= 4 ? 18 : 0);
+      if (sx > W - Math.min(560, W * 0.56) - 30) break;
+      ctx.save(); ctx.translate(sx, sy); ctx.scale(1.1, 1.1);
+      const coats = [P.teal, P.olive, P.purple, P.red];
+      const wv = Math.sin(this.t * 6 + i * 1.3) * 4;
+      pen.begin().m(-6, 0).q(-7, -14, 0, -15).q(7, -14, 6, 0).close().ink(coats[i % 4], 2);
+      if (i % 3 === 0) pen.begin().m(5, -11).l(10, -22 + wv).stroke(2.6);
+      pen.begin().ell(0, -21, 6, 6).ink(P.skin, 1.8);
+      ctx.fillStyle = P.ink; ctx.beginPath(); ctx.arc(-2, -21, 1, 0, 7); ctx.arc(2, -21, 1, 0, 7); ctx.fill();
+      ctx.restore();
+    }
+    if (s.population > 0) bodyText(ctx, `Haven pop. ${s.population} · +${Math.min(12, s.population)} scrap each mission`, px, H - 50, 15, P.parchment, 'center');
     // granny's quip
     const qText = this.celebrate > 0 ? `Granny Gert: "${this.lastBought}! Now THAT's engineering!"` : QUIPS[this.quip];
     const qw = Math.min(330, W * 0.38);

@@ -3,7 +3,7 @@ import { pen, inkText, FONT_TITLE } from '../render/ink';
 import { rand, pick, clamp, easeOutBack } from '../core/math';
 
 interface Part {
-  kind: 'smoke' | 'debris' | 'spark' | 'flame' | 'star' | 'ring' | 'flash' | 'dust' | 'feather' | 'drop' | 'confetti' | 'soot';
+  kind: 'smoke' | 'debris' | 'spark' | 'flame' | 'star' | 'ring' | 'flash' | 'dust' | 'feather' | 'drop' | 'confetti' | 'soot' | 'gring';
   x: number; y: number; vx: number; vy: number; life: number; max: number; r: number; rot: number; vr: number; color: string; grav: number; drag: number;
 }
 interface Popup { x: number; y: number; text: string; color: string; life: number; max: number; size: number; vy: number; }
@@ -48,6 +48,11 @@ export class FX {
   stop(t: number) { if (this.hitstopCool > 0) return; this.hitstop = Math.max(this.hitstop, Math.min(t, 0.08)); this.hitstopCool = 0.25; }
   puff(x: number, y: number, n = 4, color = P.smokeLight, size = 8) {
     for (let i = 0; i < n; i++) this.add({ kind: 'smoke', x: x + rand(-6, 6), y: y + rand(-6, 6), vx: rand(-30, 30), vy: rand(-40, 0), r: rand(size * 0.6, size * 1.2), life: rand(0.4, 0.8), max: 0.8, color, drag: 2, grav: -20 });
+  }
+  /** Flat dust shockwave hugging the ground. */
+  groundRing(x: number, y: number, r: number) {
+    this.add({ kind: 'gring', x, y, r, life: 0.45, max: 0.45, color: P.parchmentShade });
+    for (let i = 0; i < 10; i++) { const s = i % 2 ? 1 : -1; this.add({ kind: 'dust', x: x + s * Math.random() * 10, y: y - 4, vx: s * (140 + Math.random() * 160), vy: -Math.random() * 40, r: 6 + Math.random() * 6, life: 0.6, max: 0.6, color: P.parchmentShade, drag: 4 }); }
   }
   dust(x: number, y: number, n = 6) {
     for (let i = 0; i < n; i++) this.add({ kind: 'dust', x: x + rand(-14, 14), y, vx: rand(-60, 60), vy: rand(-50, -10), r: rand(5, 10), life: rand(0.4, 0.8), max: 0.8, color: P.parchmentShade, drag: 3 });
@@ -119,6 +124,10 @@ export class FX {
         case 'ring': {
           const k = 1 - t; ctx.globalAlpha = t; ctx.strokeStyle = p.color; ctx.lineWidth = 6 * t + 1;
           ctx.beginPath(); ctx.arc(p.x, p.y, p.r + k * 90, 0, Math.PI * 2); ctx.stroke(); ctx.globalAlpha = 1; break;
+        }
+        case 'gring': {
+          const k = 1 - t; ctx.globalAlpha = t * 0.9; ctx.strokeStyle = P.parchment; ctx.lineWidth = 5 * t + 1;
+          ctx.beginPath(); ctx.ellipse(p.x, p.y, p.r * (0.4 + k * 1.4), p.r * (0.1 + k * 0.25), 0, 0, Math.PI * 2); ctx.stroke(); ctx.globalAlpha = 1; break;
         }
         case 'flash':
           ctx.globalAlpha = t; ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 7); ctx.fill(); ctx.globalAlpha = 1; break;

@@ -33,6 +33,12 @@ export class ResultsScene implements Scene {
       this.gains[k] = this.success ? c + (this.spec.rewards[k] ?? 0) : Math.floor(c * 0.5);
       s.res[k] += this.gains[k];
     }
+    if (this.success) {
+      // Haven's workshop: everyone you've rescued pitches in a little scrap each sortie
+      const help = Math.min(12, s.population);
+      if (help > 0) { this.gains.scrap += help; s.res.scrap += help; this.unlocks.push(`Haven's workshop chipped in +${help} scrap`); }
+      if (w.rescued > 0) { s.population += w.rescued; this.unlocks.push(`${w.rescued} survivor${w.rescued > 1 ? 's' : ''} moved into Haven (pop. ${s.population})`); }
+    }
     const wasDone = !!s.missions[this.spec.id]?.done;
     this.stars = this.success ? Math.min(3, 1 + this.objs.filter((o) => o.optional && o.done).length) : 0;
     this.hard = w.player.damageTaken >= 2 || !!this.spec.boss;

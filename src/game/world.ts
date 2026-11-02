@@ -106,6 +106,8 @@ export class World {
     const r = 54 * this.player.stats.blastMul * scale;
     this.fx.explosion(x, y, 0.8 * scale * Math.sqrt(this.player.stats.blastMul), scale >= 1 ? pick(['KA-BOOM!', 'BOOM!', 'WHAM!', 'BLAM!', 'KRAK!']) : undefined);
     Audio.explosion(scale);
+    try { navigator.vibrate?.(25); } catch { /* unsupported */ }
+    this.fx.groundRing(x, Math.min(y, this.terrain.surfaceY(x)), r);
     for (const e of this.enemies) {
       if (e.dead || e.dying > 0) continue;
       const d = dist(x, y, e.x, e.cy) - e.r;
@@ -319,7 +321,7 @@ export class World {
     tx = clamp(tx, minX, maxX);
     this.camX = damp(this.camX, tx, 4, dt);
     const ty = clamp(Math.min(0, p.y - 205), CEILING - 70, 0);
-    this.camY = damp(this.camY, ty, 3, dt);
+    this.camY = damp(this.camY, ty, ty < this.camY ? 6 : 3, dt);
   }
 
   // ---------------------------------------------------------------- render

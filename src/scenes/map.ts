@@ -183,6 +183,14 @@ export class MapScene implements Scene {
     const gw = 150;
     UI.button(ctx, 'garage', W - gw - 70 - Engine.safe.r, 8, gw, 44, 'GARAGE', () => go(Scenes.garage), { style: 'teal', size: 20, keys: ['KeyG'] });
     if (affordable) { const k = Math.sin(this.t * 6) > 0; inkText(ctx, 'NEW!', W - 80 - Engine.safe.r, 12, 15, k ? P.goldLight : P.gold, { outline: 3 }); }
+    if (s.missions.m1?.done && Object.keys(s.levels).length === 0 && affordable) {
+      // coach mark: point at the garage the first time you can afford something
+      const gx = W - gw - 70 - Engine.safe.r - 14 + Math.sin(this.t * 6) * 5, gy = 30;
+      panel(ctx, gx - 214, gy - 16, 180, 32, { color: P.paper });
+      bodyText(ctx, 'Spend your scrap here!', gx - 124, gy, 16, P.ink, 'center');
+      pen.begin().ell(gx - 20, gy, 11, 9).ink(P.glove, 2.5);
+      pen.begin().m(gx - 12, gy - 2).l(gx + 2, gy - 2).stroke(5, P.ink); pen.begin().m(gx - 12, gy - 2).l(gx + 1, gy - 2).stroke(3, P.glove);
+    }
     UI.button(ctx, 'home', W - 58 - Engine.safe.r, 8, 46, 44, '⌂', () => go(Scenes.title), { style: 'brass', size: 22, keys: ['Escape'] });
     if (Engine.portrait) drawRotate(ctx, W, H, this.t);
     fadeIn(ctx, this.t, W, H, 0.01);

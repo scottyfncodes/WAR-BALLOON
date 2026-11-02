@@ -187,11 +187,12 @@ export class Player {
         this.inWater = true;
         if (by > water + 2 && this.vy > 60) { w.fx.puff(this.x, water, 6, '#c8dcdc', 8); Audio.puff(); }
         this.vy -= 260 * dt; this.vx *= Math.exp(-2.5 * dt); this.heat = Math.max(0.2, this.heat - dt * 0.4);
-        this.soakT += dt;
-        if (this.soakT > 1.4) { this.soakT = 0; this.hit(w, 1, this.x, water + 40, 'water'); w.fx.burst(this.x, this.y - 30, 'SOAKED!', 18, P.tealLight); }
+        // every fresh dunk soaks you (with a short grace period), and lingering keeps soaking
+        if (this.soakT <= 0) { this.soakT = 1.4; this.hit(w, 1, this.x, water + 40, 'water'); w.fx.burst(this.x, this.y - 30, 'SOAKED!', 18, P.tealLight); }
         gy = water + 18;
       }
-    } else this.soakT = Math.max(0, this.soakT - dt);
+    }
+    this.soakT = Math.max(0, this.soakT - dt);
     if (by > gy - 2 && w.terrain.lavaAt(this.x) && water === undefined) {
       if (!this.stats.bucket || this.invuln <= 0) this.hit(w, 1, this.x, gy, 'lava');
       this.vy = -240; w.fx.burst(this.x, this.y - 20, 'YEEOWCH!', 20); for (let i = 0; i < 6; i++) w.fx.add({ kind: 'flame', x: this.x + (Math.random() - 0.5) * 30, y: gy, vx: 0, vy: -120, r: 8, life: 0.5, max: 0.5 });

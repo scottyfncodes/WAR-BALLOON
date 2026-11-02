@@ -11,8 +11,9 @@ const fail = (m) => { console.error('SMOKE FAIL:', m); process.exit(1); };
   p.on('console', (m) => { if (m.type() === 'error') errs.push(m.text()); });
   const W = '__wb.Engine.scene.w';
   const ev = (js) => p.evaluate(js);
+  const open = async (url, ms) => { await p.goto(url); await p.waitForFunction(() => window.__wb && window.__wb.Engine.scene && (!location.search.includes('play') || window.__wb.Engine.scene.w), null, { timeout: 20000 }); await p.waitForTimeout(ms); };
   // Mission 1: barricade -> supply crate -> Haven
-  await p.goto(base + '?play=m1'); await p.waitForTimeout(2500);
+  await open(base + '?play=m1', 2500);
   await ev(`(()=>{const w=${W};w.player.x=880;w.player.y=330;w.player.vx=0;w.player.vy=0;})()`);
   for (let i = 0; i < 4; i++) { await p.keyboard.press('KeyB'); await p.waitForTimeout(700); }
   if (!(await ev(`${W}.objectives[0].done`))) fail('barricade not destroyed');
@@ -28,12 +29,12 @@ const fail = (m) => { console.error('SMOKE FAIL:', m); process.exit(1); };
   const all = await ev(`__wb.MISSIONS.map(m=>m.id)`);
   if (all.length < 19) fail('expected 19 missions, got ' + all.length);
   for (const m of all) {
-    await p.goto(base + '?play=' + m); await p.waitForTimeout(1600);
+    await open(base + '?play=' + m, 1600);
     if ((await ev(`${W}.state`)) !== 'play') fail(m + ' not running');
   }
   // Every boss can be beaten: blow all valves, wait for the wreck, objective completes
   for (const m of ['m4', 'd3', 'f3', 'g3', 'z3', 'a3']) {
-    await p.goto(base + '?play=' + m); await p.waitForTimeout(1500);
+    await open(base + '?play=' + m, 1500);
     await ev(`(()=>{const w=${W};const b=w.boss;w.player.x=b.arenaX+200;w.player.y=200;})()`);
     await p.waitForTimeout(700);
     await ev(`(()=>{const w=${W};const b=w.boss;b.intro=0;for(const v of b.valves){const q=b.valvePos(v);for(let i=0;i<6;i++)w.explode(q.x,q.y,1);} })()`);
@@ -41,17 +42,18 @@ const fail = (m) => { console.error('SMOKE FAIL:', m); process.exit(1); };
     if (!(await ev(`${W}.bossDown`))) fail(m + ' boss not defeated');
   }
   // Region mechanics: flood dunk soaks, frozen altitude ices, lava burns
-  await p.goto(base + '?play=f1'); await p.waitForTimeout(2000);
-  await ev(`(()=>{const w=${W};w.player.x=900;w.player.y=470;w.player.invuln=0;})()`); await p.waitForTimeout(2200);
+  await open(base + '?play=f1', 2000);
+  await ev(`(()=>{const w=${W};const g=w.terrain.buildings;let x=900;while(g.some(b=>x>b.x-60&&x<b.x+b.w+60))x+=40;w.player.x=x;w.player.y=470;w.player.invuln=0;})()`);
+  await p.keyboard.down('ArrowDown'); await p.waitForTimeout(3500); await p.keyboard.up('ArrowDown');
   if ((await ev(`${W}.player.damageTaken`)) < 1) fail('flood water did not soak');
-  await p.goto(base + '?play=z1'); await p.waitForTimeout(2000);
+  await open(base + '?play=z1', 2000);
   await ev(`(()=>{const w=${W};w.player.y=170;})()`); await p.keyboard.down('ArrowUp'); await p.waitForTimeout(2500); await p.keyboard.up('ArrowUp');
   if ((await ev(`${W}.player.ice`)) < 0.2) fail('frozen icing did not build');
-  await p.goto(base + '?play=a1'); await p.waitForTimeout(2000);
+  await open(base + '?play=a1', 2000);
   await ev(`(()=>{const w=${W};const [a,l]=w.terrain.lava[0];w.player.x=a+l/2;w.player.y=w.terrain.groundY(a+l/2)-30;w.player.vy=100;w.player.invuln=0;})()`); await p.waitForTimeout(800);
   if ((await ev(`${W}.player.damageTaken`)) < 1) fail('lava did not burn');
   // Menus render
-  for (const s of ['title', 'map', 'garage', 'ending']) { await p.goto(base + '?scene=' + s); await p.waitForTimeout(1200); }
+  for (const s of ['title', 'map', 'garage', 'ending']) { await open(base + '?scene=' + s, 1200); }
   await b.close();
   if (errs.length) fail('page errors:\n' + errs.join('\n'));
   console.log('SMOKE OK');

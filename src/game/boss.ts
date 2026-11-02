@@ -7,14 +7,14 @@ import { Projectile, Enemy, Eruption } from './entities';
 
 interface Valve { ox: number; hp: number; flash: number; }
 
-export interface BossCfg { id: string; name: string; short: string; sub: string; hull: string; cab: string; arm: string; ball: 'ball' | 'anchor' | 'drill' | 'ice' | 'fire'; ship?: boolean; special?: 'geyser' | 'broadside' | 'vines' | 'breath' | 'firerain'; mortar: 'junk' | 'snow'; summon: 'buzzard' | 'moth'; speed: number; valveHp: number; }
+export interface BossCfg { id: string; name: string; short: string; sub: string; hull: string; cab: string; arm: string; ball: 'ball' | 'anchor' | 'drill' | 'ice' | 'fire'; ship?: boolean; special?: 'geyser' | 'broadside' | 'vines' | 'breath' | 'firerain'; base?: 'treads' | 'roots' | 'skis' | 'walker'; head?: 'box' | 'flower' | 'furnace'; mortar: 'junk' | 'snow'; summon: 'buzzard' | 'moth'; speed: number; valveHp: number; }
 export const BOSSES: Record<string, BossCfg> = {
   bertha: { id: 'bertha', name: 'BIG BERTHA', short: 'BIG BERTHA', sub: 'the Scrap Baron\'s crane-tank', hull: P.rust, cab: P.olive, arm: P.gold, ball: 'ball', mortar: 'junk', summon: 'buzzard', speed: 1, valveHp: 2 },
   dredger: { id: 'dredger', special: 'geyser', name: 'THE DUNE DREDGER', short: 'DREDGER', sub: 'eats sand, spits scrap', hull: '#c08a52', cab: P.teal, arm: P.red, ball: 'drill', mortar: 'junk', summon: 'buzzard', speed: 1.2, valveHp: 2 },
   salty: { id: 'salty', special: 'broadside', name: 'OLD SALTY', short: 'OLD SALTY', sub: 'a paddle-steamer with a grudge', hull: '#4f6670', cab: P.parchment, arm: P.steel, ball: 'anchor', ship: true, mortar: 'junk', summon: 'buzzard', speed: 1.1, valveHp: 3 },
-  bramble: { id: 'bramble', special: 'vines', name: 'THE BRAMBLE KING', short: 'BRAMBLE KING', sub: 'a lawnmower that grew a crown', hull: '#5a6e3a', cab: '#8a5a2b', arm: '#4f7a2a', ball: 'ball', mortar: 'junk', summon: 'moth', speed: 1.25, valveHp: 3 },
-  icebreaker: { id: 'icebreaker', special: 'breath', name: 'THE ICEBREAKER', short: 'ICEBREAKER', sub: 'cracks glaciers for breakfast', hull: '#6a7a8a', cab: P.red, arm: '#dfe6ee', ball: 'ice', mortar: 'snow', summon: 'buzzard', speed: 1.3, valveHp: 3 },
-  furnace: { id: 'furnace', special: 'firerain', name: 'THE IRON FURNACE', short: 'IRON FURNACE', sub: 'the Scrap Baron\'s last stand', hull: '#3a3030', cab: '#7a2a1a', arm: '#c4841d', ball: 'fire', mortar: 'junk', summon: 'buzzard', speed: 1.45, valveHp: 4 },
+  bramble: { base: 'roots', head: 'flower', id: 'bramble', special: 'vines', name: 'THE BRAMBLE KING', short: 'BRAMBLE KING', sub: 'a lawnmower that grew a crown', hull: '#5a6e3a', cab: '#8a5a2b', arm: '#4f7a2a', ball: 'ball', mortar: 'junk', summon: 'moth', speed: 1.25, valveHp: 3 },
+  icebreaker: { base: 'skis', id: 'icebreaker', special: 'breath', name: 'THE ICEBREAKER', short: 'ICEBREAKER', sub: 'cracks glaciers for breakfast', hull: '#6a7a8a', cab: P.red, arm: '#dfe6ee', ball: 'ice', mortar: 'snow', summon: 'buzzard', speed: 1.3, valveHp: 3 },
+  furnace: { base: 'walker', head: 'furnace', id: 'furnace', special: 'firerain', name: 'THE IRON FURNACE', short: 'IRON FURNACE', sub: 'the Scrap Baron\'s last stand', hull: '#3a3030', cab: '#7a2a1a', arm: '#c4841d', ball: 'fire', mortar: 'junk', summon: 'buzzard', speed: 1.45, valveHp: 4 },
 };
 
 /** BIG BERTHA — the Scrap Baron's crane-tank. Bomb her three pressure valves. */
@@ -215,13 +215,40 @@ export class Boss {
       ctx.save(); ctx.translate(-f * 120, -30); ctx.rotate(this.t * 2 * f);
       for (let k = 0; k < 6; k++) { ctx.rotate(Math.PI / 3); pen.begin().rect(-4, 0, 8, 34).ink(P.brownLight, 2); }
       ctx.restore();
+    } else if (this.cfg.base === 'roots') {
+      // four gnarled root-legs that shuffle
+      for (let k = 0; k < 4; k++) {
+        const lx = -95 + k * 63, ph = this.stompT * 2 + k * 1.6, lift = Math.max(0, Math.sin(ph)) * 10;
+        const fx = lx + Math.cos(ph) * 10;
+        pen.begin().m(lx - 10, -40).q(lx - 22, -18, fx - 8, -lift).l(fx + 14, -lift).q(lx + 10, -18, lx + 12, -40).close().ink('#5a4430', 3);
+        pen.begin().m(fx - 8, -lift).l(fx - 18, 2 - lift).m(fx + 4, -lift).l(fx + 2, 4 - lift).m(fx + 14, -lift).l(fx + 24, 2 - lift).stroke(3, '#3e2e20');
+      }
+    } else if (this.cfg.base === 'skis') {
+      pen.begin().rrect(-120, -40, 240, 30, 10).ink('#4f5a64', 3);
+      for (const sy of [-6, 0]) pen.begin().m(-150, sy).l(140, sy).q(165, sy, 168, sy - 14).stroke(6, P.ink);
+      pen.begin().m(-150, -3).l(140, -3).q(162, -3, 165, -15).stroke(3, P.steelLight);
+      for (const sx of [-80, 0, 80]) pen.begin().m(sx, -12).l(sx, -2).stroke(5, P.steelDark);
+      if (Math.random() < 0.4) { /* snow spray drawn via fx elsewhere */ }
+    } else if (this.cfg.base === 'walker') {
+      // two huge piston legs, stomping
+      for (let k = 0; k < 2; k++) {
+        const lx = k ? 70 : -70, ph = this.stompT * 1.6 + k * Math.PI, lift = Math.max(0, Math.sin(ph)) * 16;
+        pen.begin().rect(lx - 14, -44, 28, 24 - lift).ink('#3a3030', 3);
+        pen.begin().rect(lx - 9, -22 - lift, 18, 18).ink(P.steel, 2.4);
+        pen.begin().rrect(lx - 30, -6 - lift, 60, 10, 4).ink('#2a2222', 3);
+        ctx.fillStyle = 'rgba(255,120,50,0.6)'; ctx.fillRect(lx - 4, -40, 8, 14 - lift * 0.5);
+      }
     } else {
       // treads
       pen.begin().rrect(-130, -42, 260, 42, 20).ink('#3a3436', 3.2);
       for (let i = 0; i < 9; i++) { const wx = -110 + i * 27.5; ctx.save(); ctx.translate(wx, -21); ctx.rotate(this.stompT); pen.begin().ell(0, 0, 11, 11).ink(P.steelDark, 2); pen.begin().m(-8, 0).l(8, 0).stroke(2, P.steel); ctx.restore(); }
     }
     // hull
-    const hull = () => pen.begin().m(-120, -40).l(-104, -130).l(104, -130).l(122, -40).close();
+    const hull = this.cfg.base === 'roots'
+      ? () => pen.begin().m(-124, -40).q(-140, -100, -90, -132).q(0, -150, 90, -132).q(140, -100, 124, -40).close()
+      : this.cfg.base === 'walker'
+        ? () => pen.begin().m(-110, -40).l(-120, -136).l(120, -136).l(110, -40).close()
+        : () => pen.begin().m(-120, -40).l(-104, -130).l(104, -130).l(122, -40).close();
     hull(); pen.ink(this.hitFlash > 0 ? P.white : this.cfg.hull, 3.4);
     cel(ctx, hull, () => {
       ctx.fillStyle = 'rgba(40,10,10,0.25)'; ctx.fillRect(40, -140, 100, 110);
@@ -252,19 +279,42 @@ export class Boss {
     ctx.restore();
     // cab with angry face windows
     const cx = f * 40;
-    pen.begin().rect(cx - 40, -200, 80, 72).ink(this.cfg.cab, 3.2);
     const blink = Math.sin(this.t * 2) > 0.95;
-    for (const ex of [-18, 18]) {
-      pen.begin().rect(cx + ex - 12, -186, 24, 18).ink(blink ? P.olive : P.gold, 2.4);
-      if (!blink) { ctx.fillStyle = P.ink; ctx.beginPath(); ctx.arc(cx + ex + f * 4, -177, 4, 0, 7); ctx.fill(); }
+    if (this.cfg.head === 'flower') {
+      // a giant carnivorous bloom for a head
+      for (let k = 0; k < 8; k++) { const a = k * 0.785 + Math.sin(this.t * 2) * 0.05; pen.begin().ell(cx + Math.cos(a) * 44, -170 + Math.sin(a) * 40, 22, 14).ink(k % 2 ? '#c84a6a' : '#e86a8a', 2.4); }
+      pen.begin().ell(cx, -170, 40, 36).ink('#f2c840', 3);
+      for (const ex of [-14, 14]) { pen.begin().ell(cx + ex, -178, 8, 9).ink(P.white, 2); if (!blink) { ctx.fillStyle = P.ink; ctx.beginPath(); ctx.arc(cx + ex + f * 3, -177, 3.5, 0, 7); ctx.fill(); } }
+      pen.begin().m(cx - 22, -192).l(cx - 6, -186).m(cx + 22, -192).l(cx + 6, -186).stroke(4);
+      pen.begin().m(cx - 18, -158).q(cx, -144, cx + 18, -158).q(cx, -152, cx - 18, -158).close().ink(P.redDark, 2.4);
+      for (let k = -12; k <= 12; k += 6) pen.begin().m(cx + k, -157).l(cx + k + 2, -151).stroke(1.6, P.white);
+      // crown
+      pen.begin().m(cx - 22, -206).l(cx - 22, -222).l(cx - 11, -212).l(cx, -228).l(cx + 11, -212).l(cx + 22, -222).l(cx + 22, -206).close().ink(P.gold, 2.4);
+    } else if (this.cfg.head === 'furnace') {
+      // a pot-bellied furnace with a fire for a mouth
+      pen.begin().m(cx - 46, -128).q(cx - 56, -180, cx - 30, -206).l(cx + 30, -206).q(cx + 56, -180, cx + 46, -128).close().ink(this.cfg.cab, 3.2);
+      for (const ex of [-18, 18]) { pen.begin().ell(cx + ex, -182, 10, 7).ink(blink ? this.cfg.cab : '#ffb040', 2.4); }
+      pen.begin().m(cx - 34, -194).l(cx - 8, -184).m(cx + 34, -194).l(cx + 8, -184).stroke(4);
+      const fl = 0.6 + 0.4 * Math.sin(this.t * 20);
+      pen.begin().m(cx - 24, -142).q(cx, -166, cx + 24, -142).close().ink('#ff8a30', 2.6);
+      ctx.fillStyle = `rgba(255,230,120,${fl})`; ctx.beginPath(); ctx.ellipse(cx, -148, 14, 6, 0, 0, 7); ctx.fill();
+      for (let k = -18; k <= 18; k += 9) pen.begin().m(cx + k, -142).l(cx + k, -158).stroke(2.4, '#2a1a14');
+    } else {
+      pen.begin().rect(cx - 40, -200, 80, 72).ink(this.cfg.cab, 3.2);
+      for (const ex of [-18, 18]) {
+        pen.begin().rect(cx + ex - 12, -186, 24, 18).ink(blink ? this.cfg.cab : P.gold, 2.4);
+        if (!blink) { ctx.fillStyle = P.ink; ctx.beginPath(); ctx.arc(cx + ex + f * 4, -177, 4, 0, 7); ctx.fill(); }
+      }
+      pen.begin().m(cx - 32, -194).l(cx - 6, -186).m(cx + 32, -194).l(cx + 6, -186).stroke(4); // angry brows
+      pen.begin().m(cx - 22, -146).l(cx - 12, -152).l(cx - 2, -146).l(cx + 8, -152).l(cx + 18, -146).stroke(3, P.ink); // teeth grille
     }
-    pen.begin().m(cx - 32, -194).l(cx - 6, -186).m(cx + 32, -194).l(cx + 6, -186).stroke(4); // angry brows
-    pen.begin().m(cx - 22, -146).l(cx - 12, -152).l(cx - 2, -146).l(cx + 8, -152).l(cx + 18, -146).stroke(3, P.ink); // teeth grille
     // driver: the Scrap Baron (tiny, top hat)
+    if (this.cfg.head) ctx.translate(0, -24);
     pen.begin().ell(cx, -212, 9, 9).ink(P.skin, 2.2);
     pen.begin().rect(cx - 9, -236, 18, 16).ink(P.ink, 2); pen.begin().rect(cx - 13, -222, 26, 4).ink(P.ink, 2);
     pen.begin().m(cx - 7, -208).q(cx, -203, cx + 7, -208).stroke(2); // moustache
     pen.begin().ell(cx + 4, -214, 3.5, 3.5).ink(P.brass, 1.6);
+    if (this.cfg.head) ctx.translate(0, 24);
     // smokestack
     const sx = -f * 50;
     pen.begin().rect(sx - 14, -196, 28, 66).ink('#4a3d38', 3);

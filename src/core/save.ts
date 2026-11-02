@@ -18,6 +18,8 @@ export interface SaveData {
   fails: Record<string, number>;
   camps: Record<string, number>;
   difficulty: 'relaxed' | 'normal' | 'hard';
+  ach: string[];
+  flags: Record<string, boolean>;
   stats: { bombs: number; destroyed: number; hooked: number; };
 }
 
@@ -29,7 +31,7 @@ export function freshSave(): SaveData {
     v: 1,
     res: { fuel: 0, scrap: 0, fabric: 0, food: 1, water: 1, electronics: 0 },
     levels: {}, missions: {}, postcards: [], paint: 'classic', paintsUnlocked: ['classic'],
-    seenIntro: false, music: true, sfx: true, provisions: false, totalRuns: 0, population: 0, seenRegions: ['city'], fails: {}, camps: {}, difficulty: 'normal',
+    seenIntro: false, music: true, sfx: true, provisions: false, totalRuns: 0, population: 0, seenRegions: ['city'], fails: {}, camps: {}, difficulty: 'normal', ach: [], flags: {},
     stats: { bombs: 0, destroyed: 0, hooked: 0 },
   };
 }

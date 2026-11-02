@@ -212,7 +212,8 @@ export class MapScene implements Scene {
     const gw = 150;
     UI.button(ctx, 'garage', W - gw - 70 - Engine.safe.r, 8, gw, 44, 'GARAGE', () => go(Scenes.garage), { style: 'teal', size: 20, keys: ['KeyG'] });
     if (affordable) { const k = Math.sin(this.t * 6) > 0; inkText(ctx, 'NEW!', W - 80 - Engine.safe.r, 12, 15, k ? P.goldLight : P.gold, { outline: 3 }); }
-    if (s.missions.m1?.done && Object.keys(s.levels).length === 0 && affordable) {
+    const coach = !!s.missions.m1?.done && Object.keys(s.levels).length === 0 && affordable;
+    if (coach) {
       // coach mark: point at the garage the first time you can afford something
       const gx = W - gw - 70 - Engine.safe.r - 14 + Math.sin(this.t * 6) * 5, gy = 30;
       panel(ctx, gx - 214, gy - 16, 180, 32, { color: P.paper });
@@ -220,6 +221,7 @@ export class MapScene implements Scene {
       pen.begin().ell(gx - 20, gy, 11, 9).ink(P.glove, 2.5);
       pen.begin().m(gx - 12, gy - 2).l(gx + 2, gy - 2).stroke(5, P.ink); pen.begin().m(gx - 12, gy - 2).l(gx + 1, gy - 2).stroke(3, P.glove);
     }
+    if (!coach) UI.button(ctx, 'book', W - gw - 70 - Engine.safe.r - 108, 8, 100, 44, 'BOOK', () => go(Scenes.scrapbook), { style: 'brass', size: 18, keys: ['KeyB'] });
     UI.button(ctx, 'home', W - 58 - Engine.safe.r, 8, 46, 44, '⌂', () => go(Scenes.title), { style: 'brass', size: 22, keys: ['Escape'] });
     if (this.introT > 0) this.drawRegionIntro(ctx, W, H);
     if (Engine.portrait) drawRotate(ctx, W, H, this.t);

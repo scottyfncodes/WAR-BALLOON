@@ -17,11 +17,12 @@ import { missionsIn } from '../game/missions';
 import { RES_KEYS } from '../game/upgrades';
 import { drawItemIcon } from '../game/entities';
 import { FX } from '../game/fx';
+import { checkAchievements } from '../game/achievements';
 import { drawRotate } from './play';
 
 /** A camp: its leader, their running story, supply requests and trades. */
 export class CampScene implements Scene {
-  t = 0; id: BiomeId = 'city'; fx = new FX(); typeT = 0; flash: Record<string, number> = {}; say = '';
+  cheer = 0; t = 0; id: BiomeId = 'city'; fx = new FX(); typeT = 0; flash: Record<string, number> = {}; say = '';
   enter(d?: { region: BiomeId }) {
     this.id = d?.region ?? 'city'; this.t = 0; this.typeT = 0; this.fx = new FX();
     const done = missionsIn(this.id).filter((m) => Save.data.missions[m.id]?.done).length;
@@ -29,7 +30,7 @@ export class CampScene implements Scene {
     Audio.playSong(this.id === 'city' ? 'haven' : BIOMES[this.id].music);
   }
   update(dt: number) {
-    this.t += dt; this.typeT += dt; UI.update(); this.fx.update(dt);
+    this.t += dt; this.typeT += dt; this.cheer = Math.max(0, this.cheer - dt); UI.update(); this.fx.update(dt);
     for (const k of Object.keys(this.flash)) this.flash[k] = Math.max(0, this.flash[k] - dt * 2);
   }
   private fulfil() {
@@ -37,7 +38,7 @@ export class CampScene implements Scene {
     const n = s.camps[this.id] ?? 0; const r = camp.requests[n];
     if (!r || !canAfford(r.give)) { Audio.deny(); return; }
     pay(r.give); for (const k of RES_KEYS) s.res[k] += r.reward[k] ?? 0;
-    s.camps[this.id] = n + 1; s.population += r.pop; Save.write();
+    s.camps[this.id] = n + 1; s.population += r.pop; checkAchievements(s); Save.write(); this.cheer = 1.6;
     for (const k of Object.keys(r.reward)) this.flash[k] = 1;
     Audio.buy(); Audio.voice('yay');
     const W = Engine.W, H = Engine.H;
@@ -55,7 +56,7 @@ export class CampScene implements Scene {
     ctx.fillStyle = b.ground.mid; ctx.fillRect(0, H * 0.9, W, H * 0.1);
     const lx = Math.max(W * 0.22, 160 + Engine.safe.l);
     ctx.save(); ctx.translate(lx, H * 0.95); ctx.scale(1.55, 1.55);
-    drawCharacter(ctx, lead.look, this.t, this.typeT * 40 < this.say.length);
+    drawCharacter(ctx, lead.look, this.t, this.typeT * 40 < this.say.length, this.cheer);
     ctx.restore();
     panel(ctx, lx - 110, H * 0.86, 220, 46, { color: '#3b2a20', border: 2.5 });
     inkText(ctx, lead.name.toUpperCase(), lx, H * 0.86 + 16, 17, P.goldLight, { outline: 3, shadow: false });

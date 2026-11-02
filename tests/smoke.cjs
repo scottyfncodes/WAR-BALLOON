@@ -37,8 +37,12 @@ const fail = (m) => { console.error('SMOKE FAIL:', m); process.exit(1); };
     await open(base + '?play=' + m, 1500);
     await ev(`(()=>{const w=${W};const b=w.boss;w.player.x=b.arenaX+200;w.player.y=200;})()`);
     await p.waitForTimeout(700);
-    await ev(`(()=>{const w=${W};const b=w.boss;b.intro=0;for(const v of b.valves){const q=b.valvePos(v);for(let i=0;i<6;i++)w.explode(q.x,q.y,1);} })()`);
-    await p.waitForTimeout(4500);
+    // hit each weak point the way the boss demands: hook pods, crack ice, wait for vents
+    for (let k = 0; k < 28; k++) {
+      await ev(`(()=>{const w=${W};const b=w.boss;b.intro=0;if(b.dying>0)return;for(const v of b.valves){if(v.hp<=0)continue;const q=b.valvePos(v);v.flash=0;if(b.cfg.weak==='pods')b.hookHit(w,q.x,q.y,300);else w.explode(q.x,q.y,1);} })()`);
+      await p.waitForTimeout(300);
+    }
+    await p.waitForTimeout(3500);
     if (!(await ev(`${W}.bossDown`))) fail(m + ' boss not defeated');
   }
   // Region mechanics: flood dunk soaks, frozen altitude ices, lava burns

@@ -31,6 +31,7 @@ export class PlayScene implements Scene {
     this.w.viewW = Engine.W; this.w.viewH = Engine.H;
     this.touch = new TouchControls(); this.touch.visible = Engine.isTouch || Input.usingTouch;
     this.touch.boostEnabled = this.w.player.stats.boost > 0;
+    this.touch.lefty = s.lefty;
     this.paused = false; this.t = 0; this.ended = false;
     Audio.playSong(this.spec.music);
     this.w.banner(this.spec.name.toUpperCase(), this.spec.objectives.filter((o) => !o.optional).map((o) => o.text).join(' · ') || 'Grab everything & head home', P.parchment);
@@ -224,7 +225,7 @@ export class PlayScene implements Scene {
   private drawPause(ctx: CanvasRenderingContext2D) {
     const W = Engine.W, H = Engine.H;
     ctx.fillStyle = 'rgba(20,12,8,0.6)'; ctx.fillRect(0, 0, W, H);
-    const pw = 340, ph = 330, px = W / 2 - pw / 2, py = H / 2 - ph / 2;
+    const pw = 340, ph = 376, px = W / 2 - pw / 2, py = H / 2 - ph / 2;
     panel(ctx, px, py, pw, ph, { tape: true });
     inkText(ctx, 'PAUSED', W / 2, py + 40, 38, P.gold, { outline: 6 });
     bodyText(ctx, this.spec.name + ' — ' + this.spec.subtitle, W / 2, py + 72, 16, P.inkSoft, 'center');
@@ -235,6 +236,7 @@ export class PlayScene implements Scene {
     const s = Save.data;
     UI.button(ctx, 'music', bx, py + 258, 116, 40, s.music ? 'MUSIC ON' : 'MUSIC OFF', () => { s.music = !s.music; Audio.setMusic(s.music); Save.write(); }, { style: s.music ? 'teal' : 'paper', size: 16 });
     UI.button(ctx, 'sfx', bx + 124, py + 258, 116, 40, s.sfx ? 'SOUND ON' : 'SOUND OFF', () => { s.sfx = !s.sfx; Audio.setSfx(s.sfx); Save.write(); }, { style: s.sfx ? 'teal' : 'paper', size: 16 });
+    UI.button(ctx, 'lefty', bx, py + 306, bw, 40, s.lefty ? 'CONTROLS: LEFT-HANDED' : 'CONTROLS: RIGHT-HANDED', () => { s.lefty = !s.lefty; this.touch.lefty = s.lefty; Save.write(); }, { style: 'paper', size: 15 });
   }
 }
 

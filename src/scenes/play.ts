@@ -24,13 +24,15 @@ export class PlayScene implements Scene {
     const s = Save.data;
     this.provisions = s.provisions && s.res.food >= 1 && s.res.water >= 1;
     if (this.provisions) { s.res.food--; s.res.water--; Save.write(); }
-    this.w = new World(this.spec, computeStats(s.levels), s.levels, s.paint, this.provisions);
+    const assist = (s.fails[this.spec.id] ?? 0) >= 2 ? 1 : 0;
+    this.w = new World(this.spec, computeStats(s.levels), s.levels, s.paint, this.provisions, assist);
     this.w.viewW = Engine.W; this.w.viewH = Engine.H;
     this.touch = new TouchControls(); this.touch.visible = Engine.isTouch || Input.usingTouch;
     this.touch.boostEnabled = this.w.player.stats.boost > 0;
     this.paused = false; this.t = 0; this.ended = false;
     Audio.playSong(this.spec.music);
-    this.w.banner(this.spec.name.toUpperCase(), this.spec.objectives.filter((o) => !o.optional).map((o) => o.text).join(' · ') || 'Grab everything & return to Haven', P.parchment);
+    this.w.banner(this.spec.name.toUpperCase(), this.spec.objectives.filter((o) => !o.optional).map((o) => o.text).join(' · ') || 'Grab everything & head home', P.parchment);
+    if (assist) this.w.banner('SPARE PATCH!', 'Granny stitched an extra patch on for this try', P.tealLight);
     Save.data.totalRuns++; Save.write();
   }
   exit() { Audio.burner(0); Audio.wind(0); }
@@ -65,7 +67,7 @@ export class PlayScene implements Scene {
     ctx.translate(-Math.round(w.camX) + sx, -Math.round(w.camY) + sy);
     w.drawWorld(ctx);
     ctx.restore();
-    drawAmbient(ctx, W, H, w.biome, w.time, w.camX, w.stormLevel, w.wind);
+    drawAmbient(ctx, W, H, w.biome, w.time, w.camX, w.stormLevel * (Engine.quality < 1.6 ? 0.55 : 1), w.wind);
     if (w.stormLevel > 1.2) { ctx.fillStyle = w.biome.id === 'frozen' ? `rgba(240,245,250,${(w.stormLevel - 1) * 0.12})` : `rgba(220,170,100,${(w.stormLevel - 1) * 0.14})`; ctx.fillRect(0, 0, W, H); }
     if (w.fx.flash > 0) { ctx.fillStyle = `rgba(226,73,58,${w.fx.flash * 0.35})`; ctx.fillRect(0, 0, W, H); }
     drawPost(ctx, W, H, w.time);

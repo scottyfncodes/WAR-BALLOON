@@ -39,6 +39,8 @@ export class ResultsScene implements Scene {
       if (help > 0) { this.gains.scrap += help; s.res.scrap += help; this.unlocks.push(`Haven's workshop chipped in +${help} scrap`); }
       if (w.rescued > 0) { s.population += w.rescued; this.unlocks.push(`${w.rescued} survivor${w.rescued > 1 ? 's' : ''} moved into Haven (pop. ${s.population})`); }
     }
+    if (this.success) delete s.fails[this.spec.id]; else s.fails[this.spec.id] = (s.fails[this.spec.id] ?? 0) + 1;
+    if (!this.success && s.fails[this.spec.id] >= 2) this.unlocks.push('Granny will stitch on a spare patch for your next try');
     const wasDone = !!s.missions[this.spec.id]?.done;
     this.stars = this.success ? Math.min(3, 1 + this.objs.filter((o) => o.optional && o.done).length) : 0;
     this.hard = w.player.damageTaken >= 2 || !!this.spec.boss;

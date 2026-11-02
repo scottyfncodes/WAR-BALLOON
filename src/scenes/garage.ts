@@ -9,7 +9,12 @@ import { go } from './router';
 import { Scenes } from './registry';
 import { CATEGORIES, UPGRADES, type Category, type UpgradeDef } from '../game/upgrades';
 import { resourceBar, drawMenuBalloon, costRow, canAfford, pay } from './common';
+import { drawItemIcon } from '../game/entities';
 import { PAINTS } from '../render/balloonArt';
+import { TRADES } from '../game/trades';
+import { BIOMES, CAMP_NAMES } from '../game/biomes';
+import { regionUnlocked } from './map';
+import { RES_KEYS } from '../game/upgrades';
 import { FX } from '../game/fx';
 import { drawRotate } from './play';
 
@@ -63,7 +68,7 @@ function paintHangar(W: number, H: number) {
 }
 
 export class GarageScene implements Scene {
-  t = 0; cat: Category | 'paint' = 'balloon'; fx = new FX(); celebrate = 0; quip = 0; flash: Record<string, number> = {}; lastBought = '';
+  t = 0; cat: Category | 'paint' | 'trade' = 'balloon'; fx = new FX(); celebrate = 0; quip = 0; flash: Record<string, number> = {}; lastBought = '';
   scroll = 0;
   enter() { this.t = 0; Audio.playSong('haven'); this.quip = Math.floor(rand(0, QUIPS.length)); this.celebrate = 0; }
   update(dt: number) {
@@ -121,7 +126,7 @@ export class GarageScene implements Scene {
     const rw = Math.min(560, W * 0.56), rx = W - rw - 12 - Engine.safe.r, ry = 60, rh = H - 70;
     panel(ctx, rx, ry, rw, rh, { color: P.parchment, tape: true });
     // tabs
-    const tabs: { id: Category | 'paint'; name: string }[] = [...CATEGORIES.map((c) => ({ id: c.id, name: c.name })), { id: 'paint', name: 'Paint' }];
+    const tabs: { id: Category | 'paint' | 'trade'; name: string }[] = [...CATEGORIES.map((c) => ({ id: c.id, name: c.id === 'propulsion' ? 'Engine' : c.id === 'retrieval' ? 'Hook' : c.id === 'firepower' ? 'Bombs' : c.name })), { id: 'paint', name: 'Paint' }, { id: 'trade', name: 'Trade' }];
     const tw = (rw - 20) / tabs.length;
     tabs.forEach((tb, i) => {
       const active = this.cat === tb.id;
@@ -129,6 +134,7 @@ export class GarageScene implements Scene {
     });
     const listY = ry + 56;
     if (this.cat === 'paint') this.drawPaints(ctx, rx, listY, rw);
+    else if (this.cat === 'trade') this.drawTrades(ctx, rx, listY, rw, rh - 66);
     else {
       const ups = UPGRADES.filter((u) => u.cat === this.cat);
       const blurb = CATEGORIES.find((c) => c.id === this.cat)!.blurb;
@@ -166,6 +172,30 @@ export class GarageScene implements Scene {
     } else {
       inkText(ctx, '✓', x + w - 40, y + h / 2, 30, P.olive, { outline: 3 });
     }
+  }
+  private drawTrades(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number) {
+    const s = Save.data;
+    const open = TRADES.filter((t) => regionUnlocked(BIOMES[t.camp]));
+    bodyText(ctx, 'Swap supplies with the camps you\'ve reached. New camps open new deals.', x + w / 2, y + 4, 15, P.inkSoft, 'center');
+    const rows = Math.ceil(open.length / 2), cw = (w - 32) / 2, ch = Math.min(84, (h - 24) / Math.max(1, rows) - 6);
+    open.forEach((t, i) => {
+      const cx = x + 12 + (i % 2) * (cw + 8), cy = y + 18 + Math.floor(i / 2) * (ch + 6);
+      pen.use(ctx, 0.5); pen.begin().rrect(cx, cy, cw, ch, 8).ink(P.paper, 2.2);
+      inkText(ctx, CAMP_NAMES[t.camp], cx + 10, cy + 14, 13, P.redDark, { align: 'left', outline: 0, shadow: false });
+      bodyText(ctx, '“' + t.line + '”', cx + 10, cy + 31, 13, P.inkSoft);
+      ctx.save(); ctx.fillStyle = 'rgba(42,26,20,0.85)'; ctx.fillRect(cx + 8, cy + ch - 30, cw - 104, 24); ctx.restore();
+      const gw2 = costRow(ctx, t.give, cx + 10, cy + ch - 18, 13);
+      inkText(ctx, '→', cx + 16 + gw2, cy + ch - 17, 14, P.gold, { outline: 2, shadow: false, align: 'left' });
+      let gx = cx + 36 + gw2;
+      for (const k of RES_KEYS) { const n = t.get[k]; if (!n) continue; ctx.save(); ctx.translate(gx + 8, cy + ch - 18); ctx.scale(0.65, 0.65); drawItemIcon(ctx, k, 11, 0); ctx.restore(); inkText(ctx, '+' + n, gx + 18, cy + ch - 17, 13, P.goldLight, { align: 'left', outline: 3, shadow: false }); gx += 44; }
+      const ok = canAfford(t.give);
+      UI.button(ctx, 'trade' + t.id, cx + cw - 90, cy + ch - 38, 80, 32, 'TRADE', () => {
+        if (!canAfford(t.give)) { Audio.deny(); return; }
+        pay(t.give); for (const k of RES_KEYS) s.res[k] += t.get[k] ?? 0; Save.write();
+        for (const k of Object.keys(t.get)) this.flash[k] = 1;
+        Audio.coin(); Audio.pickup('scrap'); this.fx.popup(cx + cw / 2, cy + 10, 'DEAL!', P.gold, 18);
+      }, { style: ok ? 'olive' : 'paper', size: 14, enabled: ok });
+    });
   }
   private drawPaints(ctx: CanvasRenderingContext2D, x: number, y: number, w: number) {
     const s = Save.data;

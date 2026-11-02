@@ -288,7 +288,7 @@ export class Target {
 export class Enemy {
   x: number; y: number; vx = 0; vy = 0; kind: EnemyKind; hp: number; maxHp: number; dead = false; dying = 0;
   state = 'idle'; st = 0; cd = rand(1, 2.5); t = rand(0, 10); facing = -1; r: number; hitFlash = 0; aim = -Math.PI / 2;
-  homeX: number; homeY: number; patrol: number; active = false; tag?: string; hookCd = 0;
+  homeX: number; homeY: number; patrol: number; active = false; tag?: string; hookCd = 0; life?: number;
   constructor(x: number, y: number, kind: EnemyKind, patrol = 200) {
     this.x = x; this.y = y; this.kind = kind; this.homeX = x; this.homeY = y; this.patrol = patrol;
     const hp: Record<EnemyKind, number> = { buzzard: 1, turret: 3, buggy: 3, gyro: 2, mine: 1, snapper: 2, moth: 1 };
@@ -310,6 +310,7 @@ export class Enemy {
   }
   update(w: World, dt: number) {
     this.t += dt; this.hitFlash = Math.max(0, this.hitFlash - dt); this.hookCd = Math.max(0, this.hookCd - dt);
+    if (this.life !== undefined && this.dying === 0) { this.life -= dt; if (this.life <= 0) { this.dead = true; w.fx.puff(this.x, this.y - 20, 5, '#5f8a32', 8); return; } }
     const p = w.player;
     const dx = p.x - this.x;
     if (!this.active) { if (Math.abs(dx) < w.viewW * 0.75) this.active = true; else return; }
@@ -845,5 +846,37 @@ export class Storm {
         ctx.beginPath(); ctx.moveTo(this.strikeX, cy + 20); for (const [bx, by] of this.boltPts) ctx.lineTo(bx, by); ctx.stroke();
       }
     }
+  }
+}
+
+/** One-shot ground eruption (boss attack): telegraphed crack, then a column of sand or fire. */
+export class Eruption {
+  x: number; y: number; kind: 'sand' | 'fire'; warn = 1.0; active = 1.1; dead = false; t = 0;
+  constructor(x: number, y: number, kind: 'sand' | 'fire') { this.x = x; this.y = y; this.kind = kind; }
+  update(w: World, dt: number) {
+    this.t += dt;
+    if (this.warn > 0) {
+      this.warn -= dt;
+      if (Math.random() < 0.3) w.fx.dust(this.x + rand(-14, 14), this.y, 1);
+      if (this.warn <= 0) { Audio.noiseBurst(0.9, { f: 600, f2: 150, gain: 0.3 }); w.fx.shake = Math.max(w.fx.shake, 5); }
+      return;
+    }
+    this.active -= dt;
+    for (let i = 0; i < 3; i++) {
+      if (this.kind === 'fire') w.fx.add({ kind: 'flame', x: this.x + rand(-16, 16), y: this.y - rand(0, 20), vx: rand(-20, 20), vy: rand(-420, -300), r: rand(9, 15), life: 0.7, max: 0.7, drag: 0.4 });
+      else w.fx.add({ kind: 'dust', x: this.x + rand(-16, 16), y: this.y - rand(0, 20), vx: rand(-30, 30), vy: rand(-420, -300), r: rand(10, 16), life: 0.8, max: 0.8, color: P.parchmentShade, drag: 0.6 });
+    }
+    const p = w.player;
+    if (Math.abs(p.x - this.x) < 36 && p.y > this.y - 330) { p.hit(w, 1, this.x, p.y + 20, this.kind); p.vy -= 400 * dt; }
+    if (this.active <= 0) this.dead = true;
+  }
+  draw(ctx: CanvasRenderingContext2D) {
+    if (this.warn <= 0) return;
+    const a = Math.sin(this.t * 24) > 0;
+    ctx.fillStyle = this.kind === 'fire' ? (a ? 'rgba(255,90,40,0.35)' : 'rgba(255,180,60,0.25)') : (a ? 'rgba(230,190,120,0.4)' : 'rgba(200,150,90,0.25)');
+    ctx.fillRect(this.x - 30, this.y - 320, 60, 320);
+    pen.use(ctx, 0.6);
+    pen.begin().m(this.x - 22, this.y).l(this.x - 8, this.y - 6).l(this.x, this.y + 2).l(this.x + 10, this.y - 7).l(this.x + 24, this.y).stroke(2.5);
+    inkText(ctx, '!', this.x, this.y - 40, 22, P.redBright, { outline: 4 });
   }
 }

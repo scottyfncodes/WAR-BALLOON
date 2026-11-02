@@ -28,6 +28,7 @@ export class World {
   stormLevel = 1;
   /** enemy fire-rate multiplier from the difficulty setting */
   aggro = 1;
+  pendingTip: { t: number; text: string } | null = null;
   exitX: number;
   fx = new FX();
   camX = 0; camY = 0; viewW = 960; viewH = 540;
@@ -207,7 +208,11 @@ export class World {
   }
   onPlayerHit() { /* objectives evaluate damage */ }
   onPlayerDown() { this.state = 'failed'; this.endT = 0; }
-  onBossStart() { Audio.playSong('boss'); this.fx.shake = 10; Audio.voice('yikes'); }
+  onBossStart() {
+    Audio.playSong('boss'); this.fx.shake = 10; Audio.voice('yikes');
+    const tip: Record<string, string> = { valve: 'Bomb the three red valves!', pods: 'Bombs bounce off — rip the seed pods away with your HOOK!', armor: 'Crack the ice off each valve, then bomb it!', timed: 'The valves only open while they VENT steam — time your bombs!' };
+    this.pendingTip = { t: 2.7, text: tip[this.boss?.cfg.weak ?? 'valve'] };
+  }
   onBossPhase(ph: number) { this.banner(ph >= 3 ? 'SHE\'S FURIOUS!' : 'KEEP IT UP!', ph >= 3 ? 'Last valve! She\'s calling buzzards!' : 'Bertha is lobbing junk now!'); }
   onBossDefeated(b: Boss) {
     this.bossDown = true;
@@ -268,6 +273,7 @@ export class World {
     this.updateObjectives(dt);
     this.updateHints(dt);
     this.updateCamera(dt);
+    if (this.pendingTip) { this.pendingTip.t -= dt; if (this.pendingTip.t <= 0) { this.banner('WEAK SPOT', this.pendingTip.text, P.goldLight); this.pendingTip = null; } }
     for (const b of this.banners) b.t -= dt;
     this.banners = this.banners.filter((b) => b.t > 0);
     Audio.wind(Math.abs(p.vx) / 300 + Math.abs(this.wind) / 200 + (p.boosting > 0 ? 0.4 : 0));

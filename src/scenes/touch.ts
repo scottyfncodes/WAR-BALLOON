@@ -14,6 +14,8 @@ export class TouchControls {
   pressedNow: Record<string, boolean> = { bomb: false, hook: false, boost: false };
   visible = false;
   boostEnabled = false;
+  /** left-handed: stick on the right, buttons on the left */
+  lefty = false;
   flash: Record<string, number> = { bomb: 0, hook: 0, boost: 0 };
   buttons(): TB[] {
     const W = Engine.W, H = Engine.H, sr = Engine.safe.r, sb = Engine.safe.b;
@@ -22,9 +24,10 @@ export class TouchControls {
       { id: 'hook', x: W - 226 - sr, y: H - 70 - sb * 0.5, r: 48, label: 'HOOK', color: P.teal },
     ];
     if (this.boostEnabled) b.push({ id: 'boost', x: W - 196 - sr, y: H - 196 - sb * 0.5, r: 38, label: 'BOOST', color: P.orange });
+    if (this.lefty) for (const k of b) k.x = W - k.x + (sr - Engine.safe.l);
     return b;
   }
-  stickHome() { return { x: 112 + Engine.safe.l, y: Engine.H - 112 - Engine.safe.b * 0.5 }; }
+  stickHome() { return { x: this.lefty ? Engine.W - 112 - Engine.safe.r : 112 + Engine.safe.l, y: Engine.H - 112 - Engine.safe.b * 0.5 }; }
   update(blockTopY = 90) {
     if (Input.usingTouch) this.visible = true;
     this.pressedNow = { bomb: false, hook: false, boost: false };
@@ -33,10 +36,10 @@ export class TouchControls {
       if (d.claimed) continue;
       const b = btns.find((b) => (d.x - b.x) ** 2 + (d.y - b.y) ** 2 < (b.r + 16) ** 2);
       if (b) { d.claimed = 'btn:' + b.id; this.held[b.id] = d; this.pressedNow[b.id] = true; this.flash[b.id] = 0.15; continue; }
-      if (d.x < Engine.W * 0.5 && d.y > blockTopY && !this.stick.ptr) {
+      if ((this.lefty ? d.x > Engine.W * 0.5 : d.x < Engine.W * 0.5) && d.y > blockTopY && !this.stick.ptr) {
         d.claimed = 'stick'; this.stick.ptr = d;
         // anchor at touch point, but keep the base fully on-screen
-        this.stick.ox = clamp(d.x, 70 + Engine.safe.l, Engine.W * 0.45); this.stick.oy = clamp(d.y, 120, Engine.H - 70);
+        this.stick.ox = this.lefty ? clamp(d.x, Engine.W * 0.55, Engine.W - 70 - Engine.safe.r) : clamp(d.x, 70 + Engine.safe.l, Engine.W * 0.45); this.stick.oy = clamp(d.y, 120, Engine.H - 70);
       }
     }
     for (const u of Input.ups) {

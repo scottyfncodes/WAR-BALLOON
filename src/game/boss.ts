@@ -5,34 +5,38 @@ import { Audio } from '../core/audio';
 import type { World } from './world';
 import { Projectile, Enemy, Eruption } from './entities';
 
-interface Valve { ox: number; hp: number; flash: number; }
+interface Valve { ox: number; hp: number; flash: number; armor: number; }
 
-export interface BossCfg { id: string; name: string; short: string; sub: string; hull: string; cab: string; arm: string; ball: 'ball' | 'anchor' | 'drill' | 'ice' | 'fire'; ship?: boolean; special?: 'geyser' | 'broadside' | 'vines' | 'breath' | 'firerain'; base?: 'treads' | 'roots' | 'skis' | 'walker'; head?: 'box' | 'flower' | 'furnace'; mortar: 'junk' | 'snow'; summon: 'buzzard' | 'moth'; speed: number; valveHp: number; }
+export interface BossCfg { id: string; name: string; short: string; sub: string; hull: string; cab: string; arm: string; ball: 'ball' | 'anchor' | 'drill' | 'ice' | 'fire'; ship?: boolean; special?: 'geyser' | 'broadside' | 'vines' | 'breath' | 'firerain'; base?: 'treads' | 'roots' | 'skis' | 'walker'; head?: 'box' | 'flower' | 'furnace'; weak?: 'valve' | 'pods' | 'armor' | 'timed'; mortar: 'junk' | 'snow'; summon: 'buzzard' | 'moth'; speed: number; valveHp: number; }
 export const BOSSES: Record<string, BossCfg> = {
   bertha: { id: 'bertha', name: 'BIG BERTHA', short: 'BIG BERTHA', sub: 'the Scrap Baron\'s crane-tank', hull: P.rust, cab: P.olive, arm: P.gold, ball: 'ball', mortar: 'junk', summon: 'buzzard', speed: 1, valveHp: 2 },
   dredger: { id: 'dredger', special: 'geyser', name: 'THE DUNE DREDGER', short: 'DREDGER', sub: 'eats sand, spits scrap', hull: '#c08a52', cab: P.teal, arm: P.red, ball: 'drill', mortar: 'junk', summon: 'buzzard', speed: 1.2, valveHp: 2 },
   salty: { id: 'salty', special: 'broadside', name: 'OLD SALTY', short: 'OLD SALTY', sub: 'a paddle-steamer with a grudge', hull: '#4f6670', cab: P.parchment, arm: P.steel, ball: 'anchor', ship: true, mortar: 'junk', summon: 'buzzard', speed: 1.1, valveHp: 3 },
-  bramble: { base: 'roots', head: 'flower', id: 'bramble', special: 'vines', name: 'THE BRAMBLE KING', short: 'BRAMBLE KING', sub: 'a lawnmower that grew a crown', hull: '#5a6e3a', cab: '#8a5a2b', arm: '#4f7a2a', ball: 'ball', mortar: 'junk', summon: 'moth', speed: 1.25, valveHp: 3 },
-  icebreaker: { base: 'skis', id: 'icebreaker', special: 'breath', name: 'THE ICEBREAKER', short: 'ICEBREAKER', sub: 'cracks glaciers for breakfast', hull: '#6a7a8a', cab: P.red, arm: '#dfe6ee', ball: 'ice', mortar: 'snow', summon: 'buzzard', speed: 1.3, valveHp: 3 },
-  furnace: { base: 'walker', head: 'furnace', id: 'furnace', special: 'firerain', name: 'THE IRON FURNACE', short: 'IRON FURNACE', sub: 'the Scrap Baron\'s last stand', hull: '#3a3030', cab: '#7a2a1a', arm: '#c4841d', ball: 'fire', mortar: 'junk', summon: 'buzzard', speed: 1.45, valveHp: 4 },
+  bramble: { weak: 'pods', base: 'roots', head: 'flower', id: 'bramble', special: 'vines', name: 'THE BRAMBLE KING', short: 'BRAMBLE KING', sub: 'a lawnmower that grew a crown', hull: '#5a6e3a', cab: '#8a5a2b', arm: '#4f7a2a', ball: 'ball', mortar: 'junk', summon: 'moth', speed: 1.25, valveHp: 3 },
+  icebreaker: { weak: 'armor', base: 'skis', id: 'icebreaker', special: 'breath', name: 'THE ICEBREAKER', short: 'ICEBREAKER', sub: 'cracks glaciers for breakfast', hull: '#6a7a8a', cab: P.red, arm: '#dfe6ee', ball: 'ice', mortar: 'snow', summon: 'buzzard', speed: 1.3, valveHp: 3 },
+  furnace: { weak: 'timed', base: 'walker', head: 'furnace', id: 'furnace', special: 'firerain', name: 'THE IRON FURNACE', short: 'IRON FURNACE', sub: 'the Scrap Baron\'s last stand', hull: '#3a3030', cab: '#7a2a1a', arm: '#c4841d', ball: 'fire', mortar: 'junk', summon: 'buzzard', speed: 1.45, valveHp: 4 },
 };
 
 /** BIG BERTHA — the Scrap Baron's crane-tank. Bomb her three pressure valves. */
 export class Boss {
   x: number; y: number; arenaX: number; arenaW: number;
-  valves: Valve[] = [{ ox: -70, hp: 2, flash: 0 }, { ox: 0, hp: 2, flash: 0 }, { ox: 70, hp: 2, flash: 0 }];
+  valves: Valve[] = [{ ox: -70, hp: 2, flash: 0, armor: 0 }, { ox: 0, hp: 2, flash: 0, armor: 0 }, { ox: 70, hp: 2, flash: 0, armor: 0 }];
+  hintCd = 0; steam: number[][] = [];
   t = 0; dir = 1; dead = false; dying = 0; intro = 0; started = false; defeated = false;
   // wrecking ball pendulum
   ang = 0.4; angV = 0; chain = 170; ballX = 0; ballY = 0; ballR = 26;
   armSwing = 0;
   mortarCd = 3; summonCd = 8; hitFlash = 0; stompT = 0; specialCd = 4; breathT = 0;
   cfg: BossCfg;
-  constructor(x: number, groundY: number, arenaX: number, arenaW: number, cfg: BossCfg = BOSSES.bertha) { this.x = x; this.y = groundY; this.arenaX = arenaX; this.arenaW = arenaW; this.cfg = cfg; this.valves.forEach((v) => (v.hp = cfg.valveHp)); }
+  constructor(x: number, groundY: number, arenaX: number, arenaW: number, cfg: BossCfg = BOSSES.bertha) { this.x = x; this.y = groundY; this.arenaX = arenaX; this.arenaW = arenaW; this.cfg = cfg; this.valves.forEach((v) => { v.hp = cfg.weak === 'pods' ? 1 : cfg.valveHp; v.armor = cfg.weak === 'armor' ? 2 : 0; }); }
+  /** Iron Furnace: valves only open while venting (2 s of every 5). */
+  get open() { return this.cfg.weak !== 'timed' || (this.t % 5) < 2; }
   get alive() { return this.valves.filter((v) => v.hp > 0).length; }
   get phase() { return 3 - this.alive + 1; }
   armTip() { const f = this.dir; return { x: this.x + f * 60 + Math.sin(this.armSwing) * 20, y: this.y - 300 }; }
   update(w: World, dt: number) {
-    this.t += dt; this.hitFlash = Math.max(0, this.hitFlash - dt);
+    this.t += dt; this.hitFlash = Math.max(0, this.hitFlash - dt); this.hintCd = Math.max(0, this.hintCd - dt);
+    if (this.started && this.cfg.weak === 'timed' && this.open && Math.random() < 0.5) for (const v of this.valves) if (v.hp > 0) { const q = this.valvePos(v); this.steam.push([q.x, q.y]); }
     for (const v of this.valves) v.flash = Math.max(0, v.flash - dt);
     const p = w.player;
     if (!this.started) { if (p.x > this.arenaX + 40) { this.started = true; this.intro = 2.6; w.onBossStart(); } }
@@ -104,6 +108,8 @@ export class Boss {
         if (!p.stats.heater) p.ice = Math.min(1, p.ice + dt * 0.45);
       }
     }
+    for (const [sx2, sy2] of this.steam) w.fx.add({ kind: 'smoke', x: sx2, y: sy2 - 20, vx: (Math.random() - 0.5) * 40, vy: -120, r: 7, life: 0.6, max: 0.6, color: P.white, drag: 1.5 });
+    this.steam = [];
     // smoke
     if (Math.random() < 0.3) w.fx.add({ kind: 'smoke', x: this.x - this.dir * 50, y: this.y - 190, vx: rand(-10, 10), vy: -60, r: 10, life: 1.2, max: 1.2, color: '#3b302c', drag: 0.8, grav: -10 });
   }
@@ -146,7 +152,11 @@ export class Boss {
       }
     }
   }
-  valvePos(v: Valve) { return { x: this.x + v.ox * this.dir, y: this.y - 132 }; }
+  valvePos(v: Valve) {
+    if (this.cfg.weak === 'pods') return { x: this.x + v.ox * this.dir, y: this.y - 84 + Math.sin(this.t * 2 + v.ox) * 6 };
+    return { x: this.x + v.ox * this.dir, y: this.y - 132 };
+  }
+  private hint(w: World, text: string) { if (this.hintCd > 0) return; this.hintCd = 4; w.fx.popup(w.player.x, w.player.y - 170, text, P.goldLight, 18); }
   /** Returns true if a bomb at (x,y) should detonate on the boss. */
   bombHit(x: number, y: number) {
     if (this.dying > 0 || !this.started) return false;
@@ -157,19 +167,34 @@ export class Boss {
   blast(w: World, x: number, y: number, r: number) {
     if (this.dying > 0 || !this.started) return;
     let any = false;
+    if (this.cfg.weak === 'pods') {
+      if (Math.abs(x - this.x) < 130 && y > this.y - 170) { w.fx.burst(x, y - 20, 'BOING!', 18, P.oliveLight); Audio.boing(); this.hint(w, 'Rip the seed pods off with the HOOK!'); }
+      return;
+    }
     for (const v of this.valves) {
       if (v.hp <= 0) continue;
       const vp = this.valvePos(v);
-      if (dist(x, y, vp.x, vp.y) < r * 0.75 + 14) { this.damageValve(w, v, 1); any = true; }
+      if (dist(x, y, vp.x, vp.y) < r * 0.75 + 14) {
+        any = true;
+        if (!this.open) { w.fx.burst(vp.x, vp.y - 20, 'SHUT!', 18, P.steelLight); Audio.clank(); this.hint(w, 'Bomb the valves while they VENT!'); continue; }
+        if (v.armor > 0) { v.armor--; v.flash = 0.3; w.fx.burst(vp.x, vp.y - 20, v.armor ? 'CRACK!' : 'SHATTER!', 18, P.white); w.fx.puff(vp.x, vp.y, 6, '#dfeef6', 8); Audio.clank(); if (v.armor) this.hint(w, 'Crack the ice, then hit the valve!'); continue; }
+        this.damageValve(w, v, 1);
+      }
     }
     if (!any && Math.abs(x - this.x) < 130 && y > this.y - 160) { w.fx.burst(x, y - 20, 'CLANK!', 18, P.steelLight); Audio.clank(); }
   }
   hookHit(w: World, x: number, y: number, speed: number) {
-    if (this.dying > 0 || !this.started || speed < 140) return;
+    if (this.dying > 0 || !this.started) return;
+    const pods = this.cfg.weak === 'pods';
+    if (!pods && speed < 140) return;
     for (const v of this.valves) {
       if (v.hp <= 0 || v.flash > 0) continue;
       const vp = this.valvePos(v);
-      if (dist(x, y, vp.x, vp.y) < 22) { this.damageValve(w, v, 1); w.fx.burst(vp.x, vp.y - 20, 'BONK!', 20); }
+      if (dist(x, y, vp.x, vp.y) < (pods ? 28 : 22)) {
+        if (!pods && (!this.open || v.armor > 0)) { Audio.clank(); continue; }
+        this.damageValve(w, v, 1); w.fx.burst(vp.x, vp.y - 20, pods ? 'RRRIP!' : 'BONK!', 20);
+        if (pods) { w.fx.feathers(vp.x, vp.y, 6); w.player.squashV += 3; w.player.vy += 60; }
+      }
     }
   }
   private damageValve(w: World, v: Valve, n: number) {
@@ -322,7 +347,24 @@ export class Boss {
     // valves
     for (const v of this.valves) {
       const vx = v.ox * f, vy = -132;
+      if (this.cfg.weak === 'pods') {
+        const q = this.valvePos(v); const py = q.y - this.y;
+        if (v.hp <= 0) { pen.begin().m(vx, -130).q(vx + 6, -110, vx + 2, -100).stroke(3, '#3f6a24'); continue; }
+        pen.begin().m(vx, -130).q(vx + 8, (py - 130) / 2, vx, py - 16).stroke(3.5, '#3f6a24');
+        const pulse = 1 + Math.sin(this.t * 5 + v.ox) * 0.08;
+        pen.begin().ell(vx, py, 15 * pulse, 18 * pulse).ink(v.flash > 0 ? P.white : '#8a4a9a', 2.6);
+        pen.begin().m(vx - 8, py - 6).q(vx, py + 4, vx + 8, py - 6).stroke(2, '#c88ad8');
+        ctx.fillStyle = 'rgba(255,255,255,0.4)'; ctx.beginPath(); ctx.arc(vx - 5, py - 7, 3, 0, 7); ctx.fill();
+        continue;
+      }
       if (v.hp <= 0) { pen.begin().ell(vx, vy, 12, 6).ink(P.ink, 2); continue; }
+      if (v.armor > 0) {
+        pen.begin().poly([[vx - 18, vy + 2], [vx - 14, vy - 30], [vx + 2, vy - 36], [vx + 18, vy - 26], [vx + 16, vy + 2]]).ink(`rgba(210,236,248,${0.6 + v.armor * 0.15})`, 2.4);
+        pen.begin().m(vx - 8, vy - 26).l(vx + 6, vy - 6).stroke(1.6, P.white);
+        if (v.armor === 1) pen.begin().m(vx - 12, vy - 12).l(vx, vy - 18).l(vx + 10, vy - 4).stroke(2, '#5a7a9a');
+        continue;
+      }
+      if (!this.open) { pen.begin().rrect(vx - 16, vy - 28, 32, 28, 4).ink(P.steelDark, 2.6); for (let k = -10; k <= 10; k += 7) pen.begin().m(vx + k, vy - 26).l(vx + k, vy - 2).stroke(1.6, P.steel); continue; }
       const glow = 0.5 + 0.5 * Math.sin(this.t * 6 + v.ox);
       ctx.fillStyle = `rgba(255,59,47,${0.2 + glow * 0.3})`; ctx.beginPath(); ctx.arc(vx, vy - 10, 22, 0, 7); ctx.fill();
       pen.begin().rect(vx - 6, vy - 14, 12, 14).ink(P.brass, 2.4);

@@ -305,8 +305,8 @@ export class Player {
         if (e.dead || e.dying > 0 || e.hookCd > 0) continue;
         if (dist(end.x, end.y, e.x, e.cy) < e.r + 10) { e.hookCd = 0.5; e.damage(w, dmg, 'hook'); w.fx.sparks(end.x, end.y, 8, P.gold); Audio.clank(); w.fx.shake = Math.max(w.fx.shake, 4); }
       }
-      if (w.boss) w.boss.hookHit(w, end.x, end.y, this.hookSpeed);
     }
+    if (w.boss && this.hookState !== 'stowed' && this.ropeLen > 30) w.boss.hookHit(w, end.x, end.y, this.hookSpeed);
   }
 
   private updateAnim(w: World, c: Controls, dt: number) {

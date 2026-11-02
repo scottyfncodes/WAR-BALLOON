@@ -1,7 +1,7 @@
 import { P } from './palette';
 import { pen, cel } from './ink';
 
-export interface CharLook { skin: string; coat: string; hair: string; hat: 'bun' | 'scarf' | 'sailor' | 'straw' | 'hood' | 'mask'; glasses?: 'round' | 'shades' | 'goggles'; beard?: boolean; flower?: boolean; soot?: boolean; }
+export interface CharLook { skin: string; coat: string; hair: string; hat: 'bun' | 'scarf' | 'sailor' | 'straw' | 'hood' | 'mask' | 'none' | 'cap' | 'beanie' | 'bandana' | 'helmet' | 'chef'; glasses?: 'round' | 'shades' | 'goggles'; beard?: boolean; flower?: boolean; soot?: boolean; }
 
 /** Half-length cartoon portrait for camp leaders. Origin = bottom centre. */
 export function drawCharacter(ctx: CanvasRenderingContext2D, c: CharLook, t: number, talking: boolean, cheer = 0) {
@@ -67,6 +67,34 @@ export function drawCharacter(ctx: CanvasRenderingContext2D, c: CharLook, t: num
       pen.begin().m(-48, -100).q(-52, -192, 0, -194).q(52, -192, 48, -100).q(36, -150, 0, -156).q(-36, -150, -48, -100).close().ink(c.coat, 2.6);
       for (let k = -40; k <= 40; k += 10) pen.begin().ell(k, -150 - Math.cos(k / 40) * 30, 7, 6).ink(P.parchment, 1.4);
       break;
+    case 'none':
+      pen.begin().m(-35, -126).q(-38, -174, 0, -174).q(38, -174, 35, -126).q(26, -150, 4, -156).q(-20, -150, -35, -126).close().ink(c.hair, 2.6);
+      break;
+    case 'cap':
+      pen.begin().m(-36, -136).q(-38, -178, 0, -178).q(38, -178, 36, -136).close().ink(c.coat, 2.6);
+      pen.begin().m(4, -140).q(40, -146, 58, -134).q(40, -132, 4, -134).close().ink(c.coat, 2.4);
+      pen.begin().ell(0, -176, 5, 4).ink(P.parchment, 1.4);
+      break;
+    case 'beanie':
+      pen.begin().m(-37, -134).q(-40, -186, 0, -186).q(40, -186, 37, -134).close().ink(P.red, 2.6);
+      pen.begin().rrect(-38, -144, 76, 12, 5).ink(P.redDark, 2.2);
+      pen.begin().ell(0, -190, 9, 8).ink(P.parchment, 2);
+      break;
+    case 'bandana':
+      pen.begin().m(-36, -132).q(-38, -176, 0, -176).q(38, -176, 36, -132).q(0, -140, -36, -132).close().ink(P.red, 2.6);
+      for (const [dx, dy] of [[-18, -156], [6, -164], [20, -148]]) pen.begin().ell(dx, dy, 3, 3).fill(P.parchment);
+      pen.begin().m(-34, -138).l(-52, -128).l(-44, -146).close().ink(P.red, 2);
+      break;
+    case 'helmet':
+      pen.begin().m(-42, -132).q(-44, -188, 0, -188).q(44, -188, 42, -132).q(0, -142, -42, -132).close().ink('#5c6a4e', 2.8);
+      pen.begin().m(-44, -132).q(0, -144, 44, -132).stroke(4, '#3e4a34');
+      pen.begin().m(-22, -170).l(-6, -170).stroke(3, '#3e4a34');
+      break;
+    case 'chef':
+      pen.begin().rrect(-30, -170, 60, 30, 4).ink(P.white, 2.6);
+      for (const dx of [-22, 0, 22]) pen.begin().ell(dx, -186, 18, 18).ink(P.white, 2.6);
+      pen.begin().rrect(-30, -152, 60, 12, 2).ink(P.white, 2.2);
+      break;
     case 'mask':
       pen.begin().m(-36, -128).q(-40, -170, 0, -172).q(40, -170, 36, -128).q(20, -152, 0, -154).q(-20, -152, -36, -128).close().ink(c.hair, 2.6);
       pen.begin().rrect(-30, -196, 60, 34, 6).ink(P.steelDark, 2.6); pen.begin().rect(-20, -186, 40, 10).ink(P.ink, 1.5);
@@ -75,12 +103,3 @@ export function drawCharacter(ctx: CanvasRenderingContext2D, c: CharLook, t: num
   ctx.restore();
 }
 
-export interface Leader { name: string; title: string; look: CharLook; }
-export const LEADERS: Record<string, Leader> = {
-  city: { name: 'Granny Gert', title: 'Mechanic of Haven', look: { skin: P.skin, coat: P.olive, hair: '#dfe0e0', hat: 'bun', glasses: 'round' } },
-  dust: { name: 'Dot', title: 'Caravan boss', look: { skin: '#d8a070', coat: '#a8744a', hair: P.red, hat: 'scarf', glasses: 'shades' } },
-  flood: { name: 'Ferryman Gus', title: 'Keeper of the Ferry Raft', look: { skin: P.skin, coat: '#2f5f8a', hair: '#8a6a50', hat: 'sailor', beard: true } },
-  green: { name: 'Ottoline', title: 'Head Gardener', look: { skin: '#a8724a', coat: P.olive, hair: P.ink, hat: 'straw', flower: true } },
-  frozen: { name: 'Dr. Penny Frost', title: 'Station scientist', look: { skin: '#f2d4c0', coat: '#5a7a9a', hair: P.gold, hat: 'hood', glasses: 'goggles' } },
-  ash: { name: 'Rook', title: 'Forge-hand (ex-Baron crew)', look: { skin: '#c8906a', coat: '#4a3a36', hair: P.ink, hat: 'mask', soot: true } },
-};

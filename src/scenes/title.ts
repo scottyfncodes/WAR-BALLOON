@@ -8,7 +8,8 @@ import { drawBackdrop, drawPost } from './backdrop';
 import { UI, panel, fadeIn } from './ui';
 import { go } from './router';
 import { Scenes } from './registry';
-import { drawMenuBalloon } from './common';
+import { drawMenuAirship } from './common';
+import { drawZombie } from '../render/zombieArt';
 import { drawRotate } from './play';
 
 export class TitleScene implements Scene {
@@ -21,7 +22,10 @@ export class TitleScene implements Scene {
     drawBackdrop(ctx, W, H, t * 30, -80, t);
     // balloon drifting
     const bx = W * 0.27, by = H * 0.62 + Math.sin(t * 1.3) * 10;
-    drawMenuBalloon(ctx, bx, by, 0.95, t, { burner: Math.sin(t * 0.9) > 0.3 ? 1 : 0, expr: 'happy', arm: (t % 6) < 2 ? 'wave' : 'rest', tilt: Math.sin(t * 0.7) * 0.05 });
+    drawMenuAirship(ctx, bx, by - 40, 1.05, t, { burner: Math.sin(t * 0.9) > 0.3 ? 1 : 0, expr: 'determined', arm: (t % 6) < 2 ? 'wave' : 'rest', tilt: Math.sin(t * 0.7) * 0.05 });
+    // the dead reaching up from the rooftops below
+    pen.use(ctx, 0.4).begin().rect(bx - 150, H * 0.9, 300, 80).ink('#4a3a32', 3);
+    for (let i = 0; i < 6; i++) { ctx.save(); ctx.translate(bx - 125 + i * 50 + Math.sin(t + i) * 4, H * 0.9); ctx.scale(1.4, 1.4); drawZombie(ctx, { kind: i === 3 ? 'brute' : i === 1 ? 'swarmer' : i === 4 ? 'climber' : 'walker', pose: 'reach', t: t + i, facing: i < 3 ? 1 : -1, seed: i * 13 }); ctx.restore(); }
     drawPost(ctx, W, H, t);
     // logo
     const lx = W * 0.64, ly = H * 0.26;
@@ -43,22 +47,22 @@ export class TitleScene implements Scene {
     pen.use(ctx, 0.6);
     ctx.save(); ctx.translate(lx, ly + 66); ctx.rotate(-0.03);
     pen.begin().m(-200, -18).l(200, -22).l(212, 0).l(200, 20).l(-200, 18).l(-212, 0).close().ink(P.teal, 3);
-    bodyText(ctx, 'The world has fallen apart. Jerry is still flying.', 0, 0, 19, P.parchment, 'center');
+    bodyText(ctx, 'Fly. Scavenge. Rescue. Survive. Upgrade.', 0, 0, 19, P.parchment, 'center');
     ctx.restore();
     word('WAR', lx, ly - 34, 64, P.redBright, 0.1);
     word('BALLOON', lx, ly + 22, 76, P.orangeLight, 0.35);
     // buttons
     const s = Save.data;
-    const started = Object.keys(s.missions).length > 0 || s.seenIntro;
+    const started = s.stats.expeditions > 0 || s.seenIntro;
     const bw = 230, bxp = lx - bw / 2;
     if (!this.confirmReset) {
-      UI.button(ctx, 'play', bxp, H * 0.5, bw, 62, started ? 'CONTINUE' : 'FLY!', () => { Audio.ignite(); go(s.seenIntro ? Scenes.map : Scenes.intro); }, { style: 'red', size: 32, keys: ['Enter'] });
+      UI.button(ctx, 'play', bxp, H * 0.5, bw, 62, started ? 'CONTINUE' : 'FLY!', () => { Audio.ignite(); go(s.seenIntro ? Scenes.haven : Scenes.intro); }, { style: 'red', size: 32, keys: ['Enter'] });
       UI.button(ctx, 'music', bxp, H * 0.5 + 76, 110, 40, s.music ? 'MUSIC ♪' : 'MUSIC ✕', () => { s.music = !s.music; Audio.setMusic(s.music); Save.write(); }, { style: s.music ? 'teal' : 'paper', size: 16 });
       UI.button(ctx, 'sfx', bxp + 120, H * 0.5 + 76, 110, 40, s.sfx ? 'SOUND ♪' : 'SOUND ✕', () => { s.sfx = !s.sfx; Audio.setSfx(s.sfx); Save.write(); }, { style: s.sfx ? 'teal' : 'paper', size: 16 });
       const dl: Record<string, string> = { relaxed: 'RELAXED', normal: 'NORMAL', hard: 'HARD' };
       const nextD: Record<string, 'relaxed' | 'normal' | 'hard'> = { relaxed: 'normal', normal: 'hard', hard: 'relaxed' };
       UI.button(ctx, 'diff', bxp + bw + 12, H * 0.5 + 76, 120, 40, dl[s.difficulty], () => { s.difficulty = nextD[s.difficulty]; Save.write(); }, { style: s.difficulty === 'hard' ? 'red' : s.difficulty === 'relaxed' ? 'olive' : 'brass', size: 15, sub: 'difficulty' });
-      bodyText(ctx, s.difficulty === 'relaxed' ? '+2 patches, gentler foes' : s.difficulty === 'hard' ? '−1 patch, angrier foes, +25% rewards' : 'as intended', bxp + bw + 72, H * 0.5 + 130, 13, 'rgba(241,223,184,0.9)', 'center');
+      bodyText(ctx, s.difficulty === 'relaxed' ? '+2 hearts, slower, gentler dead' : s.difficulty === 'hard' ? '−1 heart, hungrier horde, +25% loot' : 'as intended', bxp + bw + 72, H * 0.5 + 130, 13, 'rgba(241,223,184,0.9)', 'center');
       if (started) {
         UI.button(ctx, 'intro', bxp, H * 0.5 + 126, 110, 34, 'INTRO', () => go(Scenes.intro), { style: 'ghost', size: 14 });
         UI.button(ctx, 'reset', bxp + 120, H * 0.5 + 126, 110, 34, 'NEW GAME', () => { this.confirmReset = true; }, { style: 'ghost', size: 14 });
@@ -81,7 +85,7 @@ export class TitleScene implements Scene {
       UI.button(ctx, 'no', lx + 10, H * 0.48 + 70, 140, 50, 'KEEP', () => { this.confirmReset = false; }, { style: 'olive', size: 18, keys: ['Escape'] });
     }
     // controls hint
-    const hint = Engine.isTouch ? 'Best in landscape · Add to Home Screen for full-screen' : 'Arrows/WASD fly · Space burner · B bomb · H hook · Shift boost · Esc pause';
+    const hint = Engine.isTouch ? 'Best in landscape · Add to Home Screen for full-screen' : 'Arrows/WASD fly · B drop · H hook · X shake · F flame · Shift boost · Esc pause';
     bodyText(ctx, hint, W / 2, H - 16 - Engine.safe.b * 0.5, 15, 'rgba(241,223,184,0.85)', 'center');
     if (Engine.portrait) drawRotate(ctx, W, H, t);
     fadeIn(ctx, t, W, H, 0.6);

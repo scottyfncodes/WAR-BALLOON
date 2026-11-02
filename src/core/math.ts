@@ -41,3 +41,8 @@ export class RNG {
 export const rand = (a = 0, b = 1) => a + Math.random() * (b - a);
 export const randi = (a: number, b: number) => Math.floor(rand(a, b + 1));
 export const pick = <T>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)];
+
+/** Haptic tick, only once the player has touched the page (avoids browser warnings). */
+export function buzz(ms: number) {
+  try { if ((navigator as any).userActivation?.hasBeenActive && navigator.vibrate) navigator.vibrate(ms); } catch { /* unsupported */ }
+}

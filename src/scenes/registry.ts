@@ -1,3 +1,3 @@
 import type { Scene } from '../core/engine';
 /** Late-bound scene registry (avoids circular imports). */
-export const Scenes: { title: Scene; intro: Scene; map: Scene; garage: Scene; play: Scene; results: Scene; ending: Scene; camp: Scene; scrapbook: Scene } = {} as any;
+export const Scenes: { title: Scene; intro: Scene; haven: Scene; workshop: Scene; crew: Scene; play: Scene; report: Scene; ending: Scene } = {} as any;

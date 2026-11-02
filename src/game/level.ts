@@ -9,9 +9,9 @@ export const GROUND = 500;
 export const CEILING = 50;
 export const WORLD_BOTTOM = 560;
 
-export interface Building { x: number; w: number; h: number; top: number; canvas: HTMLCanvasElement; pad: number; chimney?: boolean; id: number; }
+export interface Building { x: number; w: number; h: number; top: number; canvas: HTMLCanvasElement; pad: number; chimney?: boolean; id: number; kind?: string; }
 
-export interface BuildingSpec { x: number; w: number; h: number; chimney?: boolean; }
+export interface BuildingSpec { x: number; w: number; h: number; chimney?: boolean; kind?: string; }
 
 const ART = 1.25; // prerender resolution multiplier for gameplay-layer art
 
@@ -23,7 +23,7 @@ export class Terrain {
   seed: number;
   biome: Biome;
   lava: [number, number][];
-  constructor(length: number, seed: number, specs: BuildingSpec[], biome: Biome = BIOMES.city, lava: [number, number][] = []) {
+  constructor(length: number, seed: number, specs: BuildingSpec[], biome: Biome = BIOMES.suburbs, lava: [number, number][] = []) {
     this.length = length; this.seed = seed; this.biome = biome; this.lava = lava;
     const rng = new RNG(seed);
     specs.sort((a, b) => a.x - b.x).forEach((s, i) => this.addBuilding(s, rng, i));
@@ -49,11 +49,11 @@ export class Terrain {
     const [c, x] = makeCanvas(cw * ART, ch * ART);
     x.scale(ART, ART);
     x.translate(pad, ch - 4);
-    paintBuilding(x, { w: s.w, h, base: pal[0], shade: pal[1], trim: pal[2], win: '#2a2426', lit: '#f5c76a', outline: 3, detail: 2, seed: rng.int(0, 99999), broken: false, flatTop: true, style: rng.int(0, 2), rust: true, vines: this.biome.id === 'city' && rng.chance(0.5) });
+    paintBuilding(x, { w: s.w, h, base: pal[0], shade: pal[1], trim: pal[2], win: '#2a2426', lit: '#f5c76a', outline: 3, detail: 2, seed: rng.int(0, 99999), broken: false, flatTop: true, style: rng.int(0, 2), rust: true, vines: this.biome.id === 'suburbs' && rng.chance(0.5) });
     overlayBuilding(x, this.biome, s.w, h, rng.int(0, 9999));
     pen.use(x, 0);
     // rooftop clutter (doesn't affect collision; sits on roof plane)
-    if (s.chimney) {
+    if (s.kind === 'haven' || s.kind === 'outpost' || s.kind === 'beacon') { /* decorated live */ } else if (s.chimney) {
       const cx2 = s.w * 0.5 - 16;
       pen.begin().rect(cx2, -h - 70, 32, 66).ink('#7a4a38', 3);
       for (let yy = -h - 64; yy < -h - 6; yy += 10) { x.fillStyle = 'rgba(40,20,10,0.3)'; x.fillRect(cx2 + 2, yy, 28, 2); }
@@ -70,7 +70,7 @@ export class Terrain {
     }
     // base rubble
     for (let k = 0; k < 5; k++) { pen.begin().poly([[rng.range(-20, s.w + 10), 2], [rng.range(-10, s.w), -rng.range(4, 14)], [rng.range(0, s.w + 20), 2]]).ink(mix(pal[1], '#000000', 0.2), 2); }
-    const b: Building = { x: s.x, w: s.w, h, top: base - h, canvas: c, pad, chimney: s.chimney, id: i };
+    const b: Building = { x: s.x, w: s.w, h, top: base - h, canvas: c, pad, chimney: s.chimney, id: i, kind: s.kind };
     this.buildings.push(b);
   }
   private paintChunk(cx: number): HTMLCanvasElement {
@@ -104,7 +104,7 @@ export class Terrain {
     x.restore();
     // cracked asphalt topping
     x.beginPath(); pts.forEach((p, i) => (i ? x.lineTo(p[0], p[1]) : x.moveTo(p[0], p[1])));
-    x.lineWidth = this.biome.id === 'frozen' ? 16 : 9; x.strokeStyle = gp.top; x.stroke();
+    x.lineWidth = this.biome.art === 'frozen' ? 16 : 9; x.strokeStyle = gp.top; x.stroke();
     x.lineWidth = 3; x.strokeStyle = gp.edge; x.stroke();
     // lava pools
     for (const [lx, lw] of this.lava) {

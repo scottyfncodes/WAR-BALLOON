@@ -4,239 +4,274 @@ import { Audio } from '../core/audio';
 import { Save } from '../core/save';
 import { P } from '../render/palette';
 import { pen, inkText, bodyText, wrapText, FONT_BODY } from '../render/ink';
-import { clamp, easeOutBack, TAU } from '../core/math';
-import { World } from '../game/world';
-import { computeStats } from '../game/upgrades';
-import { drawItemIcon, POWER_INFO } from '../game/entities';
-import type { Controls } from '../game/player';
-import type { MissionSpec } from '../game/types';
+import { clamp, easeOutBack } from '../core/math';
+import { Expedition, settle } from '../game/expedition';
+import type { Controls } from '../game/airship';
+import { S } from '../game/airship';
+import { RES_KEYS, drawResIcon } from '../game/resources';
+import { ROLE_INFO } from '../game/crew';
+import { BIOMES, type BiomeId } from '../game/biomes';
 import { drawBackdrop, drawPost, drawAmbient } from './backdrop';
-import { TouchControls } from './touch';
+import { TouchControls, drawBtnIcon } from './touch';
 import { UI, panel, ribbon, fadeIn } from './ui';
 import { go } from './router';
 import { Scenes } from './registry';
 
 export class PlayScene implements Scene {
-  w!: World; spec!: MissionSpec; touch = new TouchControls();
-  paused = false; t = 0; ended = false; provisions = false; objH = 90;
-  enter(data: { mission: MissionSpec }) {
-    this.spec = data.mission;
+  e!: Expedition; touch = new TouchControls(); region: BiomeId = 'suburbs';
+  paused = false; t = 0; ended = false; confirmBail = false;
+  /** kept for the debug/test hook */
+  get w() { return this.e; }
+  enter(data?: { region?: BiomeId; seed?: number }) {
+    this.region = (data?.region && BIOMES[data.region]) ? data.region : Save.data.region;
+    this.e = new Expedition(this.region, data?.seed);
     const s = Save.data;
-    this.provisions = s.provisions && s.res.food >= 1 && s.res.water >= 1;
-    if (this.provisions) { s.res.food--; s.res.water--; Save.write(); }
-    const assist = (s.fails[this.spec.id] ?? 0) >= 2 ? 1 : 0;
-    const diffHp = s.difficulty === 'relaxed' ? 2 : s.difficulty === 'hard' ? -1 : 0;
-    this.w = new World(this.spec, computeStats(s.levels, Save.perks()), s.levels, s.paint, this.provisions, assist + diffHp);
-    this.w.aggro = s.difficulty === 'relaxed' ? 0.7 : s.difficulty === 'hard' ? 1.3 : 1;
-    this.w.viewW = Engine.W; this.w.viewH = Engine.H;
-    this.touch = new TouchControls(); this.touch.visible = Engine.isTouch || Input.usingTouch;
-    this.touch.boostEnabled = this.w.player.stats.boost > 0;
-    this.touch.lefty = s.lefty;
-    this.paused = false; this.t = 0; this.ended = false;
-    Audio.playSong(this.spec.music);
-    this.w.banner(this.spec.name.toUpperCase(), this.spec.objectives.filter((o) => !o.optional).map((o) => o.text).join(' · ') || 'Grab everything & head home', P.parchment);
-    if (assist) this.w.banner('SPARE PATCH!', 'Granny stitched an extra patch on for this try', P.tealLight);
-    Save.data.totalRuns++; Save.write();
+    // feed the crew before take-off
+    const crew = this.e.ship.crew;
+    const chef = crew.some((c) => c.m.special === 'chef'), cook = crew.some((c) => c.m.role === 'cook');
+    const food = chef ? 0 : Math.ceil(crew.length * (cook ? 0.5 : 1));
+    this.e.foodUsed = Math.min(food, s.res.food); s.res.food -= this.e.foodUsed; Save.write();
+    if (this.e.foodUsed < food) { for (const c of crew) c.hp = Math.max(1, c.max - 1); this.e.banner('HUNGRY CREW', 'Not enough food — everyone starts weak', P.redBright); }
+    this.e.viewW = Engine.W; this.e.viewH = Engine.H;
+    this.touch = new TouchControls(); this.touch.visible = Engine.isTouch || Input.usingTouch; this.touch.lefty = s.lefty;
+    this.paused = false; this.t = 0; this.ended = false; this.confirmBail = false;
+    Audio.playSong(this.e.region.music);
+    this.e.banner(this.e.region.name.toUpperCase(), this.e.beaconWasLit ? 'Scavenge, rescue — and get home alive' : 'Light the BEACON at the far end · then get home', P.parchment);
   }
   exit() { Audio.burner(0); Audio.wind(0); }
   onBlur() { if (!this.ended) this.paused = true; Audio.burner(0); }
   update(dt: number) {
     UI.update();
     this.t += dt;
-    if (Input.hit('Escape', 'KeyP')) { this.paused = !this.paused; Audio.click(); }
+    if (Input.hit('Escape', 'KeyP')) { this.paused = !this.paused; this.confirmBail = false; Audio.click(); }
     if (this.paused || Engine.portrait) { Audio.burner(0); Audio.wind(0); return; }
-    this.w.viewW = Engine.W; this.w.viewH = Engine.H;
-    const c: Controls = { x: 0, y: 0, bomb: false, hook: false, boost: false };
+    const e = this.e;
+    e.viewW = Engine.W; e.viewH = Engine.H;
+    const c: Controls = { x: 0, y: 0, drop: false, hook: false, shake: false, flame: false, boost: false, cycle: false };
     c.x = (Input.down('ArrowRight', 'KeyD') ? 1 : 0) - (Input.down('ArrowLeft', 'KeyA') ? 1 : 0);
     c.y = (Input.down('ArrowDown', 'KeyS') ? 1 : 0) - (Input.down('ArrowUp', 'KeyW', 'Space') ? 1 : 0);
-    c.bomb = Input.hit('KeyB', 'KeyJ', 'KeyX');
-    c.hook = Input.hit('KeyH', 'KeyK', 'KeyC', 'KeyE');
+    c.drop = Input.hit('KeyB', 'KeyJ');
+    c.hook = Input.hit('KeyH', 'KeyK');
+    c.shake = Input.hit('KeyX', 'KeyQ', 'KeyE');
+    c.flame = Input.hit('KeyF');
     c.boost = Input.hit('ShiftLeft', 'ShiftRight', 'KeyL');
+    c.cycle = Input.hit('KeyC', 'Tab');
     this.touch.update(70 + Engine.safe.t);
     this.touch.merge(c);
-    this.w.update(c, dt);
-    if (this.w.state !== 'play' && this.w.endT > (this.w.state === 'complete' ? 2.4 : 2.8) && !this.ended) {
+    e.update(c, dt);
+    if (e.state !== 'play' && e.endT > (e.state === 'home' ? 2.4 : 3) && !this.ended) {
       this.ended = true;
-      go(Scenes.results, { mission: this.spec, world: this.w, success: this.w.state === 'complete', provisions: this.provisions });
+      const report = settle(e);
+      go(Scenes.report, { report });
     }
   }
   render(ctx: CanvasRenderingContext2D) {
     UI.begin();
-    const W = Engine.W, H = Engine.H, w = this.w;
-    const shake = w.fx.shake;
+    const W = Engine.W, H = Engine.H, e = this.e;
+    const shake = e.fx.shake;
     const sx = (Math.random() - 0.5) * shake, sy = (Math.random() - 0.5) * shake;
-    drawBackdrop(ctx, W, H, w.camX, w.camY, w.time, { biome: w.biome });
+    drawBackdrop(ctx, W, H, e.camX, e.camY, e.time, { biome: e.region });
     ctx.save();
-    ctx.translate(-Math.round(w.camX) + sx, -Math.round(w.camY) + sy);
-    w.drawWorld(ctx);
+    ctx.translate(-Math.round(e.camX) + sx, -Math.round(e.camY) + sy);
+    e.drawWorld(ctx);
     ctx.restore();
-    drawAmbient(ctx, W, H, w.biome, w.time, w.camX, w.stormLevel * (Engine.quality < 1.6 ? 0.55 : 1), w.wind);
-    if (w.stormLevel > 1.2) { ctx.fillStyle = w.biome.id === 'frozen' ? `rgba(240,245,250,${(w.stormLevel - 1) * 0.12})` : `rgba(220,170,100,${(w.stormLevel - 1) * 0.14})`; ctx.fillRect(0, 0, W, H); }
-    if (w.fx.flash > 0) { ctx.fillStyle = `rgba(226,73,58,${w.fx.flash * 0.35})`; ctx.fillRect(0, 0, W, H); }
-    drawPost(ctx, W, H, w.time);
-    w.boss?.drawIntro(ctx, W, H);
+    drawAmbient(ctx, W, H, e.region, e.time, e.camX, Engine.quality < 1.6 ? 0.55 : 1, 0);
+    // danger tint when the balloon is mobbed
+    const mob = e.ship.hangers.length + e.ship.boarders.length * 2;
+    if (mob > 0) { ctx.fillStyle = `rgba(150,30,20,${Math.min(0.22, mob * 0.03) * (0.7 + 0.3 * Math.sin(e.time * 8))})`; ctx.fillRect(0, 0, W, H); }
+    if (e.fx.flash > 0) { ctx.fillStyle = `rgba(226,73,58,${e.fx.flash * 0.35})`; ctx.fillRect(0, 0, W, H); }
+    drawPost(ctx, W, H, e.time);
     this.drawHUD(ctx);
-    this.touch.boostEnabled = w.player.stats.boost > 0;
-    this.touch.draw(ctx, { bombs: w.player.bombs, hookOut: w.player.hookState !== 'stowed', boostReady: w.player.boostCd <= 0 });
-    if (w.state === 'complete' && w.endT > 0.3) ribbon(ctx, W / 2, H * 0.36, 380, 'MISSION COMPLETE!', P.olive, 34);
-    if (w.state === 'failed' && w.endT > 0.6) ribbon(ctx, W / 2, H * 0.36, 320, 'BALLOON DOWN!', P.red, 34);
+    const s = e.ship, st = s.stats;
+    this.touch.draw(ctx, {
+      weapon: s.weapon, ammo: s.ammo[s.weapon], hookOut: s.hookState !== 'stowed', hangers: s.hangers.length, t: e.time,
+      shakeReady: 1 - s.shakeCd / st.shakeCd, flameReady: st.flamer ? 1 - s.flameCd / (st.flamer >= 2 ? 4.5 : 7) : 0, boostReady: st.boost ? 1 - s.boostCd / (st.boost >= 2 ? 5 : 9) : 0,
+      canFlame: st.flamer > 0, canBoost: st.boost > 0, canCycle: st.fireCap > 0 || st.mineCap > 0,
+    });
+    if (e.state === 'home' && e.endT > 0.3) ribbon(ctx, W / 2, H * 0.34, 360, 'SAFE AT HAVEN!', P.olive, 34);
+    if (e.state === 'crashed' && e.endT > 0.6) ribbon(ctx, W / 2, H * 0.34, 320, 'BALLOON DOWN!', P.red, 34);
     if (this.paused) this.drawPause(ctx);
     if (Engine.portrait) drawRotate(ctx, W, H, this.t);
     fadeIn(ctx, this.t, W, H, 0.01);
   }
 
   private drawHUD(ctx: CanvasRenderingContext2D) {
-    const W = Engine.W, H = Engine.H, w = this.w, p = w.player;
-    const L = 12 + Engine.safe.l, T = 10 + Engine.safe.t * 0.5;
+    const W = Engine.W, H = Engine.H, e = this.e, s = e.ship, st = s.stats;
+    const L = 10 + Engine.safe.l, T = 8 + Engine.safe.t * 0.5;
     pen.use(ctx, 0.4);
-    // ---------- gauge cluster (fuel dial + patches + bombs) ----------
-    const gw = 96 + Math.max(p.maxHp * 22, p.stats.bombCap * 15, 66);
-    panel(ctx, L, T, gw, 74, { color: '#3b2a20', border: 3, shadow: true });
-    // fuel dial
-    const gx = L + 38, gy = T + 40, gr = 28;
-    pen.begin().ell(gx, gy, gr, gr).ink(P.parchment, 3);
-    pen.begin().ell(gx, gy, gr + 4, gr + 4).stroke(3, P.brass);
-    const a0 = Math.PI * 0.8, a1 = Math.PI * 2.2;
-    ctx.lineWidth = 5; ctx.strokeStyle = P.redBright; ctx.beginPath(); ctx.arc(gx, gy, gr - 6, a0, a0 + (a1 - a0) * 0.2); ctx.stroke();
-    ctx.strokeStyle = P.ink; ctx.lineWidth = 1.5;
-    for (let i = 0; i <= 8; i++) { const a = a0 + (a1 - a0) * (i / 8); ctx.beginPath(); ctx.moveTo(gx + Math.cos(a) * (gr - 2), gy + Math.sin(a) * (gr - 2)); ctx.lineTo(gx + Math.cos(a) * (gr - 8), gy + Math.sin(a) * (gr - 8)); ctx.stroke(); }
-    const fk = p.hotairT > 0 ? 1 : clamp(p.fuel / p.maxFuel, 0, 1);
-    const na = a0 + (a1 - a0) * fk + Math.sin(w.time * 30) * 0.02 * (p.burnerOn ? 1 : 0);
-    pen.begin().m(gx, gy).l(gx + Math.cos(na) * (gr - 6), gy + Math.sin(na) * (gr - 6)).stroke(3, P.red);
-    pen.begin().ell(gx, gy, 4, 4).ink(P.brass, 1.5);
-    bodyText(ctx, 'FUEL', gx, gy + 14, 11, P.ink, 'center');
-    if (p.ice > 0.3) { ctx.fillStyle = `rgba(200,230,245,${0.4 + p.ice * 0.4})`; ctx.fillRect(gx - 30, gy + 30, 60 * p.ice, 4); if (Math.sin(w.time * 6) > 0) inkText(ctx, 'ICING!', gx + 60, T + 92, 13, P.tealLight, { outline: 3 }); }
-    if (fk < 0.2 && Math.sin(w.time * 10) > 0) inkText(ctx, p.fuel <= 0 ? 'EMPTY!' : 'LOW FUEL', gx + 2, T + 92, 13, P.redBright, { outline: 3 });
-    // patches (hp)
-    bodyText(ctx, 'PATCHES', L + 78, T + 18, 13, P.parchment);
-    for (let i = 0; i < p.maxHp; i++) {
-      const px = L + 84 + i * 22, py = T + 36;
-      const full = i < p.hp;
-      ctx.save(); ctx.translate(px, py); ctx.rotate((i % 2 ? 1 : -1) * 0.12);
-      pen.begin().rect(-8, -8, 16, 16).ink(full ? (i === 0 && p.hp === 1 && Math.sin(w.time * 8) > 0 ? P.redBright : P.orange) : 'rgba(0,0,0,0.3)', 2);
-      if (full) { ctx.strokeStyle = P.parchment; ctx.lineWidth = 1; ctx.setLineDash([2, 2]); ctx.strokeRect(-5, -5, 10, 10); ctx.setLineDash([]); }
+    // ---------- vitals: Jerry, envelope, fuel ----------
+    const pw = 190;
+    panel(ctx, L, T, pw, 72, { color: '#3b2a20', border: 3 });
+    for (let i = 0; i < s.maxHp; i++) {
+      const hx = L + 18 + i * 19, hy = T + 17; const full = i < s.hp;
+      const beat = full && s.hp === 1 ? 1 + 0.15 * Math.sin(e.time * 10) : 1;
+      ctx.save(); ctx.translate(hx, hy); ctx.scale(beat, beat);
+      pen.begin().m(0, 6).q(-10, -2, -7, -6).q(-3, -10, 0, -5).q(3, -10, 7, -6).q(10, -2, 0, 6).close().ink(full ? P.redBright : 'rgba(0,0,0,0.35)', 1.8);
       ctx.restore();
     }
-    // bombs
-    for (let i = 0; i < p.stats.bombCap; i++) {
-      const bx = L + 84 + i * 15, by = T + 60;
-      if (i < p.bombs) { pen.begin().ell(bx, by, 6, 6).ink(P.ink, 1.5); ctx.fillStyle = 'rgba(255,255,255,0.45)'; ctx.beginPath(); ctx.arc(bx - 2, by - 2, 1.6, 0, 7); ctx.fill(); }
-      else if (i === p.bombs) { ctx.strokeStyle = P.gold; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(bx, by, 5, -Math.PI / 2, -Math.PI / 2 + TAU * (p.reload / p.stats.reloadTime)); ctx.stroke(); }
-      else { ctx.strokeStyle = 'rgba(241,223,184,0.35)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(bx, by, 5, 0, TAU); ctx.stroke(); }
+    bodyText(ctx, 'JERRY', L + 26 + s.maxHp * 19, T + 17, 13, P.parchment);
+    const bar = (y: number, k: number, col: string, label: string, warn: boolean) => {
+      ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(L + 62, y - 6, pw - 74, 11);
+      ctx.fillStyle = warn && Math.sin(e.time * 10) > 0 ? P.redBright : col; ctx.fillRect(L + 63, y - 5, (pw - 76) * clamp(k, 0, 1), 9);
+      ctx.strokeStyle = P.ink; ctx.lineWidth = 1.5; ctx.strokeRect(L + 62, y - 6, pw - 74, 11);
+      bodyText(ctx, label, L + 10, y, 13, P.parchment);
+    };
+    bar(T + 39, s.env / s.maxEnv, P.tealLight, 'BALLOON', s.env / s.maxEnv < 0.3);
+    bar(T + 57, s.fuel / s.maxFuel, P.orangeLight, 'FUEL', s.fuel / s.maxFuel < 0.2);
+    // ---------- altitude meter ----------
+    this.drawAltimeter(ctx, L, T + 86, H - T - 86 - (this.touch.visible ? 210 : 40));
+    // ---------- minimap ----------
+    const mw = clamp(W * 0.34, 230, 380), mx = W / 2 - mw / 2 - 20, my = T;
+    panel(ctx, mx, my, mw, 30, { color: P.parchment, border: 2.5 });
+    const toX = (x: number) => mx + 10 + (x / e.length) * (mw - 20);
+    ctx.fillStyle = 'rgba(42,26,20,0.25)'; ctx.fillRect(mx + 10, my + 15, mw - 20, 3);
+    ctx.fillStyle = 'rgba(42,26,20,0.12)'; ctx.fillRect(toX(s.x - e.reveal), my + 6, Math.min(mw - 20, (e.reveal * 2 / e.length) * (mw - 20)), 20);
+    const pip = (x: number, col: string, r = 4) => { pen.begin().ell(toX(x), my + 16, r, r).ink(col, 1.5); };
+    pip(e.haven.x + e.haven.w / 2, P.teal, 5); pip(e.outpost.x + e.outpost.w / 2, P.tealLight, 4.5);
+    pip(e.beacon.x + e.beacon.w / 2, e.beaconLit || e.beaconWasLit ? P.goldLight : P.redDark, 5);
+    for (const v of e.survivors) if ((v.state === 'wait' || v.state === 'climb') && e.revealed(v.x)) { ctx.fillStyle = P.gold; ctx.fillRect(toX(v.x) - 2, my + 5, 4, 7); }
+    for (const it of e.loot) if (it.kind === 'trophy' && e.revealed(it.x)) { ctx.fillStyle = P.electric; ctx.beginPath(); ctx.arc(toX(it.x), my + 24, 2.5, 0, 7); ctx.fill(); }
+    ctx.save(); ctx.translate(toX(s.x), my + 15); pen.begin().ell(0, -3, 5, 6).ink(P.orange, 1.5); pen.begin().rect(-2.5, 3, 5, 4).ink(P.brown, 1); ctx.restore();
+    // cargo carried (not yet banked)
+    let cx = mx + 6; const cy = my + 44;
+    const any = RES_KEYS.some((k) => e.cargo[k] > 0) || e.trophies.length;
+    if (any) {
+      ctx.fillStyle = 'rgba(42,26,20,0.55)'; ctx.fillRect(mx, cy - 11, mw, 22);
+      for (const k of RES_KEYS) { const n = e.cargo[k]; if (!n) continue; ctx.save(); ctx.translate(cx + 9, cy); ctx.scale(0.6, 0.6); drawResIcon(ctx, k, 11, e.time); ctx.restore(); inkText(ctx, String(n), cx + 20, cy + 1, 14, P.parchment, { align: 'left', outline: 3, shadow: false }); cx += 44; }
+      if (e.trophies.length) { ctx.save(); ctx.translate(cx + 9, cy); ctx.scale(0.55, 0.55); drawResIcon(ctx, 'trophy', 11, e.time); ctx.restore(); cx += 26; }
+      bodyText(ctx, 'unbanked', mx + mw - 6, cy, 12, 'rgba(241,223,184,0.7)', 'right');
     }
-    // power-up timers + cargo info under cluster
-    let py2 = T + 98;
-    const timers: [string, number, number][] = [];
-    if (p.clusterT > 0) timers.push([POWER_INFO.cluster.name, p.clusterT, POWER_INFO.cluster.dur]);
-    if (p.hotairT > 0) timers.push([POWER_INFO.hotair.name, p.hotairT, POWER_INFO.hotair.dur]);
-    if (p.shield) timers.push([POWER_INFO.shield.name, 1, 1]);
-    for (const [name, tl, max] of timers) {
-      ctx.fillStyle = 'rgba(42,26,20,0.7)'; ctx.fillRect(L, py2 - 9, 150, 18);
-      ctx.fillStyle = P.gold; ctx.fillRect(L + 2, py2 + 5, 146 * (tl / max), 3);
-      bodyText(ctx, name, L + 6, py2 - 1, 13, P.parchment); py2 += 22;
+    // ---------- crew strip + lift ----------
+    const pb = 44, px = W - pb - 10 - Engine.safe.r;
+    UI.button(ctx, 'pause', px, T, pb, pb, '', () => { this.paused = !this.paused; }, { style: 'brass', keys: [] });
+    pen.begin().rect(px + 14, T + 12, 5, 17).fill(P.ink); pen.begin().rect(px + 25, T + 12, 5, 17).fill(P.ink);
+    const seats = st.seats;
+    const cw = 22, cx0 = px - 10 - seats * cw;
+    for (let i = 0; i < seats; i++) {
+      const c = s.crew[i]; const x = cx0 + i * cw + 11, y = T + 14;
+      if (!c) { pen.begin().ell(x, y, 9, 9).stroke(1.5, 'rgba(241,223,184,0.4)'); continue; }
+      const ri = ROLE_INFO[c.m.role];
+      pen.begin().ell(x, y, 10, 10).ink(c.ko ? '#555' : ri.color, 2);
+      ctx.fillStyle = c.m.look.skin; ctx.beginPath(); ctx.arc(x, y - 1, 5.5, 0, 7); ctx.fill();
+      ctx.fillStyle = c.m.look.hair; ctx.beginPath(); ctx.arc(x, y - 4, 5, Math.PI, 0); ctx.fill();
+      if (c.ko) inkText(ctx, 'x', x, y, 12, P.redBright, { outline: 2, shadow: false });
+      for (let k = 0; k < c.max; k++) { ctx.fillStyle = k < c.hp ? P.redBright : 'rgba(0,0,0,0.4)'; ctx.fillRect(x - 9 + k * (18 / c.max), y + 13, 18 / c.max - 1, 3); }
+      if (c.isNew) inkText(ctx, 'NEW', x, y - 15, 9, P.goldLight, { outline: 2, shadow: false });
     }
-    // collected resources this sortie
-    const keys = ['scrap', 'fabric', 'fuel', 'food', 'water', 'electronics'] as const;
-    let rx = L + 4;
-    for (const k of keys) {
-      const n = w.collected[k]; if (!n) continue;
-      ctx.save(); ctx.translate(rx + 9, py2 + 4); ctx.scale(0.75, 0.75); drawItemIcon(ctx, k, 11, w.time); ctx.restore();
-      inkText(ctx, String(n), rx + 24, py2 + 6, 15, P.parchment, { outline: 3, align: 'left', shadow: false });
-      rx += 46;
+    bodyText(ctx, `CREW ${s.crew.length}/${seats}`, cx0 + seats * cw / 2, T + 37, 12, P.parchment, 'center');
+    // lift vs weight
+    const lw = 120, lx = W - lw - 12 - Engine.safe.r, ly = T + 54;
+    const ratio = (s.liftMul() * 330 + 80 * st.burnerPower * s.liftMul()) / (150 * s.weight());
+    const k = clamp((ratio - 1) / 2, 0, 1);
+    ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(lx, ly, lw, 9);
+    ctx.fillStyle = k < 0.25 ? P.redBright : k < 0.5 ? P.gold : P.oliveLight; ctx.fillRect(lx + 1, ly + 1, (lw - 2) * k, 7);
+    ctx.strokeStyle = P.ink; ctx.lineWidth = 1.4; ctx.strokeRect(lx, ly, lw, 9);
+    bodyText(ctx, k < 0.25 ? 'TOO HEAVY!' : 'LIFT', lx - 6, ly + 5, 12, k < 0.25 && Math.sin(e.time * 8) > 0 ? P.redBright : P.parchment, 'right');
+    // weapon chip (keyboard players)
+    if (!this.touch.visible) {
+      const wx = W - 150 - Engine.safe.r, wy = H - 44;
+      panel(ctx, wx, wy, 140, 34, { color: '#3b2a20', border: 2 });
+      ctx.save(); ctx.translate(wx + 20, wy + 22); drawBtnIcon(ctx, s.weapon, 26); ctx.restore();
+      bodyText(ctx, `${s.weapon.toUpperCase()} x${s.ammo[s.weapon]}  (C)`, wx + 38, wy + 17, 14, P.parchment);
     }
-    // ---------- objectives (top center) ----------
-    const objs = w.objectives;
-    const ow = clamp(W * 0.27, 240, 300);
-    {
-      const ox = W - ow - 12 - Engine.safe.r - 54, oy = T;
-      const lines = objs.slice(0, 4);
-      panel(ctx, ox, oy, ow, 14 + lines.length * 19, { color: P.parchment, rot: 0, border: 2.5 });
-      this.objH = oy + 14 + lines.length * 19;
-      lines.forEach((o, i) => {
-        const yy = oy + 16 + i * 19;
-        const box = o.done ? P.olive : o.failed ? P.red : P.paper;
-        pen.begin().rect(ox + 10, yy - 7, 13, 13).ink(box, 2);
-        if (o.done) pen.begin().m(ox + 12, yy).l(ox + 16, yy + 4).l(ox + 22, yy - 6).stroke(2.5, P.parchment);
-        if (o.failed) pen.begin().m(ox + 12, yy - 5).l(ox + 21, yy + 4).m(ox + 21, yy - 5).l(ox + 12, yy + 4).stroke(2, P.parchment);
-        const need = o.spec.count ?? 1;
-        const txt = (o.spec.optional ? '★ ' : '') + o.spec.text + (need > 1 ? `  ${o.progress}/${need}` : '');
-        ctx.font = `15px ${FONT_BODY}`;
-        let s = txt; while (ctx.measureText(s).width > ow - 40 && s.length > 4) s = s.slice(0, -2);
-        if (s !== txt) s += '…';
-        bodyText(ctx, s, ox + 30, yy + 1, 15, o.done ? P.oliveDark : o.failed ? P.redDark : P.ink);
-      });
-      if (w.exitReady && w.state === 'play' && objs.some((o) => !o.spec.optional)) {
-        const k = 0.5 + 0.5 * Math.sin(w.time * 5);
-        inkText(ctx, 'HEAD HOME →', ox + ow / 2, oy + 30 + lines.length * 19, 16, k > 0.5 ? P.goldLight : P.gold, { outline: 3 });
-      }
+    // ---------- boarding alert ----------
+    if (s.hangers.length || s.boarders.length) {
+      const a = 0.6 + 0.4 * Math.sin(e.time * 10);
+      ctx.globalAlpha = a;
+      const txt = s.boarders.length ? `${s.boarders.length} ABOARD! ${s.hangers.length ? '+ ' + s.hangers.length + ' HANGING' : ''}` : `${s.hangers.length} ON THE BASKET — SHAKE!`;
+      inkText(ctx, txt, W / 2, H - 30 - Engine.safe.b * 0.5, 22, P.redBright, { outline: 5 });
+      ctx.globalAlpha = 1;
     }
-    // ---------- pause button ----------
-    const pb = 46;
-    UI.button(ctx, 'pause', W - pb - 12 - Engine.safe.r, T, pb, pb, '', () => { this.paused = !this.paused; }, { style: 'brass', keys: [] });
-    pen.begin().rect(W - pb - 12 - Engine.safe.r + 15, T + 12, 5, 18).fill(P.ink);
-    pen.begin().rect(W - pb - 12 - Engine.safe.r + 26, T + 12, 5, 18).fill(P.ink);
     // ---------- off-screen pointers ----------
-    for (const ptr of w.pointers()) {
-      const sx = ptr.x - w.camX, sy = ptr.y - w.camY;
-      const cx = clamp(sx, 40, W - 40), cy = clamp(sy, 110, H - 40);
-      const ang = Math.atan2(sy - cy, sx - cx);
-      ctx.save(); ctx.translate(cx, cy);
-      ctx.save(); ctx.rotate(ang);
-      pen.begin().m(18, 0).l(2, -10).l(2, 10).close().ink(ptr.color, 2.5);
-      ctx.restore();
+    for (const ptr of e.pointers()) {
+      const sx = ptr.x - e.camX, sy = ptr.y - e.camY;
+      const cx2 = clamp(sx, 76, W - 40), cy2 = clamp(sy, 110, H - 40);
+      const ang = Math.atan2(sy - cy2, sx - cx2);
+      ctx.save(); ctx.translate(cx2, cy2);
+      ctx.save(); ctx.rotate(ang); pen.begin().m(18, 0).l(2, -10).l(2, 10).close().ink(ptr.color, 2.5); ctx.restore();
       pen.begin().ell(0, 0, 14, 14).ink(P.ink, 0);
       inkText(ctx, ptr.label, 0, 1, ptr.label.length > 2 ? 9 : 14, ptr.color, { outline: 2, shadow: false });
       ctx.restore();
     }
-    // ---------- tutorial hint ----------
-    const h = w.activeHint;
-    if (h && w.state === 'play') {
-      const text = (this.touch.visible && h.touchText) ? h.touchText : h.text;
-      const hw = clamp(W * 0.36, 300, 420);
-      const lines = wrapText(ctx, text, hw - 70, 18);
-      const hh = 20 + lines.length * 20;
-      const k = clamp(h.t / 0.3, 0, 1);
-      const hx = W - hw - 16 - Engine.safe.r, hy = this.objH + 14 + (w.exitReady ? 20 : 0);
-      ctx.save();
-      ctx.globalAlpha = h.done ? clamp(1 - h.doneT / 0.7, 0, 1) : 1;
-      ctx.translate(hx + hw / 2, hy + hh / 2); ctx.scale(easeOutBack(k), easeOutBack(k)); ctx.translate(-hx - hw / 2, -(hy + hh / 2));
-      panel(ctx, hx, hy, hw, hh, { color: P.paper, tape: true, rot: -0.01 });
-      // Jerry's little pointing glove
-      pen.begin().ell(hx + 30, hy + hh / 2, 13, 11).ink(P.glove, 2.5);
-      pen.begin().m(hx + 40, hy + hh / 2 - 3).l(hx + 52 + Math.sin(w.time * 8) * 3, hy + hh / 2 - 3).stroke(5, P.ink);
-      pen.begin().m(hx + 40, hy + hh / 2 - 3).l(hx + 51 + Math.sin(w.time * 8) * 3, hy + hh / 2 - 3).stroke(3, P.glove);
-      lines.forEach((ln, i) => bodyText(ctx, ln, hx + 62, hy + 20 + i * 20, 18, h.done ? P.oliveDark : P.ink));
+    // ---------- tutorial tip ----------
+    const tp = e.tip;
+    if (tp && e.state === 'play') {
+      const text = (this.touch.visible && tp.tip.touch) ? tp.tip.touch : tp.tip.text;
+      const hw = clamp(W * 0.4, 300, 440);
+      const lines = wrapText(ctx, text, hw - 30, 17);
+      const hh = 16 + lines.length * 19;
+      const kk = clamp(tp.t / 0.3, 0, 1);
+      const hx = W / 2 - hw / 2 - 20, hy = T + (any ? 64 : 42);
+      ctx.save(); ctx.globalAlpha = tp.t > 6.4 ? clamp((7 - tp.t) / 0.6, 0, 1) : 1;
+      ctx.translate(hx + hw / 2, hy + hh / 2); ctx.scale(easeOutBack(kk), easeOutBack(kk)); ctx.translate(-hx - hw / 2, -(hy + hh / 2));
+      panel(ctx, hx, hy, hw, hh, { color: P.paper, tape: true });
+      lines.forEach((ln, i) => bodyText(ctx, ln, hx + 15, hy + 17 + i * 19, 17, P.ink));
       ctx.restore();
     }
     // ---------- banners ----------
-    const b = w.banners[0];
+    const b = e.banners[0];
     if (b) {
-      const k = 2.6 - b.t;
-      const s = k < 0.3 ? easeOutBack(k / 0.3) : 1;
-      const a = b.t < 0.4 ? b.t / 0.4 : 1;
-      ctx.save(); ctx.globalAlpha = a;
-      ctx.translate(clamp(W * 0.66, 330, W - 220), H * 0.42); ctx.scale(s, s);
-      inkText(ctx, b.text, 0, 0, 40, b.color ?? P.gold, { outline: 6 });
-      if (b.sub) { ctx.font = `20px ${FONT_BODY}`; inkText(ctx, b.sub, 0, 34, 20, P.parchment, { outline: 4, font: FONT_BODY }); }
+      const kb = 2.6 - b.t;
+      const sc = kb < 0.3 ? easeOutBack(kb / 0.3) : 1;
+      ctx.save(); ctx.globalAlpha = b.t < 0.4 ? b.t / 0.4 : 1;
+      ctx.translate(W / 2, H * 0.27); ctx.scale(sc, sc);
+      inkText(ctx, b.text, 0, 0, 32, b.color ?? P.gold, { outline: 6 });
+      if (b.sub) inkText(ctx, b.sub, 0, 32, 19, P.parchment, { outline: 4, font: FONT_BODY });
       ctx.restore();
     }
+  }
+
+  private drawAltimeter(ctx: CanvasRenderingContext2D, L: number, y0: number, h: number) {
+    if (h < 120) return;
+    const e = this.e, s = e.ship;
+    const ground = e.terrain.surfaceY(s.x);
+    const top = -40, span = ground - top;
+    const toY = (wy: number) => y0 + clamp((wy - top) / span, 0, 1) * h;
+    const x = L + 4, w = 16;
+    const crit = ground - 70, low = ground - 230;
+    ctx.fillStyle = 'rgba(80,140,170,0.75)'; ctx.fillRect(x, y0, w, toY(low) - y0);
+    ctx.fillStyle = 'rgba(230,170,60,0.8)'; ctx.fillRect(x, toY(low), w, toY(crit) - toY(low));
+    ctx.fillStyle = 'rgba(220,60,40,0.85)'; ctx.fillRect(x, toY(crit), w, y0 + h - toY(crit));
+    ctx.strokeStyle = P.ink; ctx.lineWidth = 2; ctx.strokeRect(x, y0, w, h);
+    ctx.save(); ctx.translate(x + w + 4, y0 + 4); ctx.font = `10px "Luckiest Guy"`; ctx.fillStyle = 'rgba(241,223,184,0.8)'; ctx.textAlign = 'left';
+    ctx.fillText('HIGH', 0, 6); ctx.fillText('LOW', 0, toY(low) - y0 + 10); ctx.fillText('GRAB', 0, toY(crit) - y0 + 10); ctx.restore();
+    // how high the dead can currently reach (tallest zombie tower nearby)
+    let reach = ground;
+    for (const z of e.zombies) if (!z.dead && !z.attached && Math.abs(z.x - s.x) < 140) reach = Math.min(reach, z.handY());
+    if (reach < ground) { const ry = toY(reach); ctx.strokeStyle = P.redBright; ctx.lineWidth = 2; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(x - 3, ry); ctx.lineTo(x + w + 3, ry); ctx.stroke(); ctx.setLineDash([]); }
+    const by = toY(s.basketY);
+    const alt = ground - s.basketY;
+    const danger = alt < 70;
+    ctx.save(); ctx.translate(x + w / 2, by);
+    pen.begin().m(-w / 2 - 6, 0).l(-w / 2 - 14, -6).l(-w / 2 - 14, 6).close().ink(danger && Math.sin(e.time * 12) > 0 ? P.redBright : P.parchment, 1.5);
+    pen.begin().ell(0, -7, 7, 8).ink(P.orange, 1.6); pen.begin().rect(-3, 1, 6, 5).ink(P.brown, 1.2);
+    ctx.restore();
+    if (danger && e.state === 'play' && s.launched) inkText(ctx, 'GRAB ZONE!', x + w + 46, by, 13, P.redBright, { outline: 3 });
+    void S;
   }
 
   private drawPause(ctx: CanvasRenderingContext2D) {
     const W = Engine.W, H = Engine.H;
     ctx.fillStyle = 'rgba(20,12,8,0.6)'; ctx.fillRect(0, 0, W, H);
-    const pw = 340, ph = 376, px = W / 2 - pw / 2, py = H / 2 - ph / 2;
+    const pw = 340, ph = 360, px = W / 2 - pw / 2, py = H / 2 - ph / 2;
     panel(ctx, px, py, pw, ph, { tape: true });
-    inkText(ctx, 'PAUSED', W / 2, py + 40, 38, P.gold, { outline: 6 });
-    bodyText(ctx, this.spec.name + ' — ' + this.spec.subtitle, W / 2, py + 72, 16, P.inkSoft, 'center');
-    const bw = 240, bx = W / 2 - bw / 2;
-    UI.button(ctx, 'resume', bx, py + 92, bw, 50, 'RESUME', () => { this.paused = false; }, { style: 'olive', keys: ['Escape'] });
-    UI.button(ctx, 'restart', bx, py + 150, bw, 44, 'RESTART', () => { this.paused = false; go(Scenes.play, { mission: this.spec }); }, { style: 'brass' });
-    UI.button(ctx, 'abandon', bx, py + 202, bw, 44, 'BACK TO MAP', () => { this.paused = false; Audio.burner(0); go(Scenes.map); }, { style: 'red' });
+    inkText(ctx, 'PAUSED', W / 2, py + 38, 38, P.gold, { outline: 6 });
+    bodyText(ctx, this.e.region.name, W / 2, py + 70, 17, P.inkSoft, 'center');
+    const bw = 250, bx = W / 2 - bw / 2;
     const s = Save.data;
-    UI.button(ctx, 'music', bx, py + 258, 116, 40, s.music ? 'MUSIC ON' : 'MUSIC OFF', () => { s.music = !s.music; Audio.setMusic(s.music); Save.write(); }, { style: s.music ? 'teal' : 'paper', size: 16 });
-    UI.button(ctx, 'sfx', bx + 124, py + 258, 116, 40, s.sfx ? 'SOUND ON' : 'SOUND OFF', () => { s.sfx = !s.sfx; Audio.setSfx(s.sfx); Save.write(); }, { style: s.sfx ? 'teal' : 'paper', size: 16 });
-    UI.button(ctx, 'lefty', bx, py + 306, bw, 40, s.lefty ? 'CONTROLS: LEFT-HANDED' : 'CONTROLS: RIGHT-HANDED', () => { s.lefty = !s.lefty; this.touch.lefty = s.lefty; Save.write(); }, { style: 'paper', size: 15 });
+    if (!this.confirmBail) {
+      UI.button(ctx, 'resume', bx, py + 90, bw, 50, 'RESUME', () => { this.paused = false; }, { style: 'olive', keys: ['Escape'] });
+      UI.button(ctx, 'bail', bx, py + 150, bw, 46, 'BAIL OUT', () => { this.confirmBail = true; }, { style: 'red', sub: 'lose most of your cargo', size: 20 });
+    } else {
+      bodyText(ctx, 'Abandon the expedition? You keep only', W / 2, py + 100, 16, P.ink, 'center');
+      bodyText(ctx, '30% of what you carry. Crew may get lost.', W / 2, py + 120, 16, P.ink, 'center');
+      UI.button(ctx, 'bailyes', bx, py + 140, 120, 46, 'BAIL', () => { this.paused = false; this.confirmBail = false; this.e.ship.crash(this.e, 'bail'); }, { style: 'red', size: 20 });
+      UI.button(ctx, 'bailno', bx + 130, py + 140, 120, 46, 'KEEP FLYING', () => { this.confirmBail = false; }, { style: 'olive', size: 16 });
+    }
+    UI.button(ctx, 'music', bx, py + 210, 120, 40, s.music ? 'MUSIC ON' : 'MUSIC OFF', () => { s.music = !s.music; Audio.setMusic(s.music); Save.write(); }, { style: s.music ? 'teal' : 'paper', size: 16 });
+    UI.button(ctx, 'sfx', bx + 130, py + 210, 120, 40, s.sfx ? 'SOUND ON' : 'SOUND OFF', () => { s.sfx = !s.sfx; Audio.setSfx(s.sfx); Save.write(); }, { style: s.sfx ? 'teal' : 'paper', size: 16 });
+    UI.button(ctx, 'lefty', bx, py + 258, bw, 40, s.lefty ? 'CONTROLS: LEFT-HANDED' : 'CONTROLS: RIGHT-HANDED', () => { s.lefty = !s.lefty; this.touch.lefty = s.lefty; Save.write(); }, { style: 'paper', size: 15 });
+    bodyText(ctx, 'Keys: arrows fly · B drop · H hook · X shake · F flame · Shift boost · C weapon', W / 2, py + ph - 26, 12, P.inkSoft, 'center');
   }
 }
 

@@ -1,7 +1,7 @@
 import { Engine, type Scene } from '../core/engine';
 import { Input } from '../core/input';
 import { Audio } from '../core/audio';
-import { Save } from '../core/save';
+import { Save, calmFx } from '../core/save';
 import { P } from '../render/palette';
 import { pen, inkText, bodyText, wrapText, FONT_BODY } from '../render/ink';
 import { clamp, easeOutBack } from '../core/math';
@@ -68,7 +68,8 @@ export class PlayScene implements Scene {
   render(ctx: CanvasRenderingContext2D) {
     UI.begin();
     const W = Engine.W, H = Engine.H, e = this.e;
-    const shake = e.fx.shake;
+    const calm = calmFx();
+    const shake = calm ? 0 : e.fx.shake;
     const sx = (Math.random() - 0.5) * shake, sy = (Math.random() - 0.5) * shake;
     drawBackdrop(ctx, W, H, e.camX, e.camY, e.time, { biome: e.region });
     ctx.save();
@@ -78,8 +79,8 @@ export class PlayScene implements Scene {
     drawAmbient(ctx, W, H, e.region, e.time, e.camX, Engine.quality < 1.6 ? 0.55 : 1, 0);
     // danger tint when the balloon is mobbed
     const mob = e.ship.hangers.length + e.ship.boarders.length * 2;
-    if (mob > 0) { ctx.fillStyle = `rgba(150,30,20,${Math.min(0.22, mob * 0.03) * (0.7 + 0.3 * Math.sin(e.time * 8))})`; ctx.fillRect(0, 0, W, H); }
-    if (e.fx.flash > 0) { ctx.fillStyle = `rgba(226,73,58,${e.fx.flash * 0.35})`; ctx.fillRect(0, 0, W, H); }
+    if (mob > 0) { ctx.fillStyle = `rgba(150,30,20,${Math.min(0.22, mob * 0.03) * (calm ? 0.85 : 0.7 + 0.3 * Math.sin(e.time * 8))})`; ctx.fillRect(0, 0, W, H); }
+    if (e.fx.flash > 0) { ctx.fillStyle = `rgba(226,73,58,${e.fx.flash * (calm ? 0.12 : 0.35)})`; ctx.fillRect(0, 0, W, H); }
     drawPost(ctx, W, H, e.time);
     this.drawHUD(ctx);
     const s = e.ship, st = s.stats;
@@ -253,7 +254,7 @@ export class PlayScene implements Scene {
   private drawPause(ctx: CanvasRenderingContext2D) {
     const W = Engine.W, H = Engine.H;
     ctx.fillStyle = 'rgba(20,12,8,0.6)'; ctx.fillRect(0, 0, W, H);
-    const pw = 340, ph = 360, px = W / 2 - pw / 2, py = H / 2 - ph / 2;
+    const pw = 340, ph = 408, px = W / 2 - pw / 2, py = H / 2 - ph / 2;
     panel(ctx, px, py, pw, ph, { tape: true });
     inkText(ctx, 'PAUSED', W / 2, py + 38, 38, P.gold, { outline: 6 });
     bodyText(ctx, this.e.region.name, W / 2, py + 70, 17, P.inkSoft, 'center');
@@ -271,7 +272,12 @@ export class PlayScene implements Scene {
     UI.button(ctx, 'music', bx, py + 210, 120, 40, s.music ? 'MUSIC ON' : 'MUSIC OFF', () => { s.music = !s.music; Audio.setMusic(s.music); Save.write(); }, { style: s.music ? 'teal' : 'paper', size: 16 });
     UI.button(ctx, 'sfx', bx + 130, py + 210, 120, 40, s.sfx ? 'SOUND ON' : 'SOUND OFF', () => { s.sfx = !s.sfx; Audio.setSfx(s.sfx); Save.write(); }, { style: s.sfx ? 'teal' : 'paper', size: 16 });
     UI.button(ctx, 'lefty', bx, py + 258, bw, 40, s.lefty ? 'CONTROLS: LEFT-HANDED' : 'CONTROLS: RIGHT-HANDED', () => { s.lefty = !s.lefty; this.touch.lefty = s.lefty; Save.write(); }, { style: 'paper', size: 15 });
-    bodyText(ctx, 'Keys: arrows fly · B drop · H hook · X shake · F flame · Shift boost · C weapon', W / 2, py + ph - 26, 12, P.inkSoft, 'center');
+    const calm = calmFx();
+    UI.button(ctx, 'calm', bx, py + 306, bw, 40, calm ? 'EFFECTS: CALM' : 'EFFECTS: FULL', () => { s.calm = !calm; Save.write(); }, { style: calm ? 'teal' : 'paper', size: 15, sub: calm ? 'no screen shake, soft flashes' : 'screen shake and flashes' });
+    if (!(Engine.isTouch || Input.usingTouch)) {
+      bodyText(ctx, 'Keys: arrows fly · B drop · H hook · X shake', W / 2, py + ph - 38, 13, P.inkSoft, 'center');
+      bodyText(ctx, 'F flame · Shift boost · C weapon · M mute', W / 2, py + ph - 20, 13, P.inkSoft, 'center');
+    }
   }
 }
 

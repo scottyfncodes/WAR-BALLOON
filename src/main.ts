@@ -3,7 +3,7 @@ import '@fontsource/patrick-hand';
 import { Engine } from './core/engine';
 import { Input } from './core/input';
 import { Audio } from './core/audio';
-import { Save } from './core/save';
+import { Save, toggleMute } from './core/save';
 import { Scenes } from './scenes/registry';
 import { TitleScene } from './scenes/title';
 import { IntroScene } from './scenes/intro';
@@ -27,6 +27,10 @@ async function boot() {
   Input.init(canvas);
   Audio.musicOn = Save.data.music; Audio.sfxOn = Save.data.sfx;
   Input.onFirstGesture.push(() => Audio.unlock());
+  window.addEventListener('keydown', (ev) => {
+    if (ev.code !== 'KeyM' || ev.repeat || ev.ctrlKey || ev.metaKey || ev.altKey) return;
+    const on = toggleMute(); Audio.setMusic(on); Audio.setSfx(on); if (on) Audio.click();
+  });
   document.addEventListener('visibilitychange', () => { if (document.hidden) Audio.suspend(); else Audio.resume(); });
   Scenes.title = new TitleScene(); Scenes.intro = new IntroScene(); Scenes.haven = new HavenScene(); Scenes.workshop = new WorkshopScene();
   Scenes.crew = new CrewScene(); Scenes.play = new PlayScene(); Scenes.report = new ReportScene(); Scenes.ending = new EndingScene();

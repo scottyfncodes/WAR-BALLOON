@@ -85,7 +85,7 @@ export class TitleScene implements Scene {
       UI.button(ctx, 'no', lx + 10, H * 0.48 + 70, 140, 50, 'KEEP', () => { this.confirmReset = false; }, { style: 'olive', size: 18, keys: ['Escape'] });
     }
     // controls hint
-    const hint = Engine.isTouch ? 'Best in landscape · Add to Home Screen for full-screen' : 'Arrows/WASD fly · B drop · H hook · X shake · F flame · Shift boost · Esc pause';
+    const hint = Engine.isTouch ? 'Best in landscape · Add to Home Screen for full-screen' : 'Arrows/WASD fly · B drop · H hook · X shake · F flame · Shift boost · Esc pause · M mute';
     bodyText(ctx, hint, W / 2, H - 16 - Engine.safe.b * 0.5, 15, 'rgba(241,223,184,0.85)', 'center');
     if (Engine.portrait) drawRotate(ctx, W, H, t);
     fadeIn(ctx, t, W, H, 0.6);

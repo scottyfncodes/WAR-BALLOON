@@ -1,0 +1,10 @@
+{"features": [
+  {"name": "M mutes music and sound, and M again brings them back", "requirement": "a mute toggle",
+   "steps": [{"wait": 2500}, {"assert": "window.__wb && __wb.Save.data.music === true"},
+             {"press": "KeyM"}, {"wait": 200}, {"assert": "__wb.Save.data.music === false && __wb.Save.data.sfx === false"},
+             {"press": "KeyM"}, {"wait": 200}, {"assert": "__wb.Save.data.music === true && __wb.Save.data.sfx === true"}]},
+  {"name": "pinch-zoom is not disabled for players who need it", "requirement": "accessible viewport",
+   "steps": [{"assert": "!/user-scalable=no|maximum-scale=1/.test(document.querySelector('meta[name=viewport]').content)"}]},
+  {"name": "the game sits inside a labelled main landmark", "requirement": "landmarks and labels",
+   "steps": [{"expect": "main#stage"}, {"assert": "document.getElementById('game').getAttribute('aria-label').includes('Escape pause')"}]}
+]}

@@ -1,0 +1,4 @@
+{
+ "icon.svg": {"license": "LicenseRef-WAR-BALLOON-original", "attribution": "Original War Balloon app icon, drawn for this project (in the repository since the first vertical slice, #1)."},
+ "icon-180.png": {"license": "LicenseRef-WAR-BALLOON-original", "attribution": "Raster export of icon.svg for Apple touch icons; original to this project."}
+}

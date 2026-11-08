@@ -23,6 +23,8 @@ export interface SaveData {
   stats: { expeditions: number; zombies: number; rescued: number; shaken: number; crashes: number; maxHangers: number; };
   ach: string[];
   veteran?: boolean;
+  /** calm effects (no screen shake, softer flashes); unset = follow the device's reduced-motion setting */
+  calm?: boolean;
 }
 
 const KEY = 'warballoon.save.v2';
@@ -64,6 +66,19 @@ function load(): SaveData {
     if (old) return migrate(JSON.parse(old));
   } catch { /* corrupted or blocked storage: start fresh */ }
   return freshSave();
+}
+
+/** True when screen shake and flashes should be calmed (player choice, else prefers-reduced-motion). */
+export function calmFx(): boolean {
+  const c = Save.data.calm;
+  if (typeof c === 'boolean') return c;
+  try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; }
+}
+
+/** M mutes everything; pressing it again brings music and sound back. */
+export function toggleMute(): boolean {
+  const s = Save.data; const on = !(s.music || s.sfx);
+  s.music = on; s.sfx = on; Save.write(); return on;
 }
 
 export const Save = {
